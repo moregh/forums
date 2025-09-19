@@ -381,8 +381,14 @@ async def login(login_data: UserLogin, request: Request):
         (login_data.username,),
         fetch_one=True
     )
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid credentials"
+        )
     
-    if not user or not security_manager.verify_password(login_data.password, user["password_hash"]):
+    if not security_manager.verify_password(login_data.password, user["password_hash"]):
         # Log failed attempt
         if user:
             db.execute_query("""
@@ -408,7 +414,7 @@ async def login(login_data: UserLogin, request: Request):
     if user["is_banned"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Account is banned"
+            detail="Banned"
         )
     
     # Reset failed attempts and update login info
