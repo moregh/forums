@@ -174,7 +174,7 @@ class SecurityManager:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token has expired"
             )
-        except jwt.JWTError:
+        except jwt.InvalidTokenError:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
@@ -261,7 +261,9 @@ app.add_middleware(
 
 async def get_client_ip(request: Request) -> str:
     """Extract client IP for rate limiting"""
-    return request.client.host
+    if request.client:
+        return request.client.host
+    return "[unknown]"
 
 async def get_current_user(
     request: Request,
@@ -376,11 +378,11 @@ async def login(login_data: UserLogin, request: Request):
         )
     
     # Get user
-    user = db.execute_query(
+    user: dict = db.execute_query(
         "SELECT * FROM users WHERE username = ?",
         (login_data.username,),
         fetch_one=True
-    )
+    )  # type: ignore
 
     if not user:
         raise HTTPException(
@@ -632,13 +634,13 @@ async def create_post(
             detail="Thread not found"
         )
     
-    if thread["locked"]:
+    if thread["locked"]:  # type: ignore
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Thread is locked"
         )
     
-    if thread["board_deleted"]:
+    if thread["board_deleted"]:  # type: ignore
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Board not found"
