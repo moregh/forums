@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forum - Home</title>
+<meta name="description" content="A modern forum for community discussions">
+<link rel="icon" type="image/x-icon" href="/favicon.ico">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<nav id="navigation">
+<div class="nav-container">
+<div class="nav-left">
+<a href="/" onclick="forum.router.navigate('/'); return false;">📋 Forum</a>
+</div>
+<div class="nav-right">
+</div>
+</div>
+</nav>
+<div id="loading">
+<div class="spinner"></div>
+</div>
+<main id="content">
+<div class="text-center mt-2">
+<h2>Loading...</h2>
+<p class="text-muted">Please wait while we load the forum.</p>
+</div>
+</main>
+<footer style="background: #2c3e50; color: white; text-align: center; padding: 2rem; margin-top: 3rem;">
+<p>&copy; 2025 moregh</p>
+</footer>
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,44 +1,27 @@
-from users import User
-from boards import Board
-from posts import Post
-from threads import Thread
+import sqlite3
 
 
 class DatabaseManager:
-    """Stub for future database integration."""
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row  # Enable dict-like access
+        return conn
     
-    def __init__(self, connection_string: str = ""):
-        self.connection_string = connection_string
-        self.connected = False
+    def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False):
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            if fetch_one:
+                return cursor.fetchone()
+            return cursor.fetchall()
     
-    def connect(self) -> bool:
-        """Connect to database."""
-        # TODO: Implement database connection
-        self.connected = True
-        return True
-    
-    def disconnect(self) -> bool:
-        """Disconnect from database."""
-        # TODO: Implement database disconnection
-        self.connected = False
-        return True
-    
-    def save_user(self, user: User) -> bool:
-        """Save user to database."""
-        # TODO: Implement user persistence
-        return True
-    
-    def save_board(self, board: Board) -> bool:
-        """Save board to database."""
-        # TODO: Implement board persistence
-        return True
-    
-    def save_thread(self, thread: Thread) -> bool:
-        """Save thread to database."""
-        # TODO: Implement thread persistence
-        return True
-    
-    def save_post(self, post: Post) -> bool:
-        """Save post to database."""
-        # TODO: Implement post persistence
-        return True
+    def execute_insert(self, query: str, params: tuple = ()) -> int:
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor.lastrowid
+

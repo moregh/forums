@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # Forum API Design & Architecture
 # RESTful API with JWT authentication for decoupled frontend
 
@@ -15,7 +16,7 @@ import sqlite3
 import secrets
 import time
 from contextlib import asynccontextmanager
-
+from database import DatabaseManager
 # =============================================================================
 # API MODELS (Request/Response Schemas)
 # =============================================================================
@@ -221,33 +222,6 @@ class RateLimiter:
             conn.commit()
             return True
 
-# =============================================================================
-# DATABASE ACCESS LAYER
-# =============================================================================
-
-class DatabaseManager:
-    def __init__(self, db_path: str):
-        self.db_path = db_path
-        
-    def get_connection(self):
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Enable dict-like access
-        return conn
-    
-    def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False):
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            if fetch_one:
-                return cursor.fetchone()
-            return cursor.fetchall()
-    
-    def execute_insert(self, query: str, params: tuple = ()) -> int:
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query, params)
-            conn.commit()
-            return cursor.lastrowid
 
 # =============================================================================
 # API ENDPOINTS
@@ -269,7 +243,7 @@ db = DatabaseManager("forum.db")
 # CORS middleware for frontend access
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "https://yourforum.com"],  # Update with your frontend URLs
+    allow_origins=["http://localhost:3000", "http://localhost:8080", "https://yourforum.com"],  # Update with your frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -290,8 +264,8 @@ async def get_client_ip(request: Request) -> str:
     return request.client.host
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    request: Request = Depends()
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
     """Validate JWT token and return current user"""
     try:
@@ -526,14 +500,23 @@ async def get_threads(board_id: int, page: int = 1, per_page: int = 20):
         LIMIT ? OFFSET ?
     """, (board_id, per_page, offset))
     
-    return [ThreadResponse(**dict(thread)) for thread in threads]
+    # Map the view fields to the expected model fields
+    mapped_threads = []
+    for thread in threads:
+        thread_dict = dict(thread)
+        thread_dict['user_id'] = thread_dict['author_id']
+        thread_dict['username'] = thread_dict['author_name'] 
+        thread_dict['timestamp'] = thread_dict['created_at']
+        mapped_threads.append(thread_dict)
+    
+    return [ThreadResponse(**thread) for thread in mapped_threads]
 
 @app.post("/api/boards/{board_id}/threads", response_model=ThreadResponse)
 async def create_thread(
     board_id: int,
     thread_data: ThreadCreate,
+    request: Request,
     current_user: dict = Depends(get_current_user),
-    request: Request = Depends()
 ):
     """Create a new thread"""
     client_ip = await get_client_ip(request)
@@ -578,8 +561,13 @@ async def create_thread(
         (thread_id,),
         fetch_one=True
     )
-    
-    return ThreadResponse(**dict(thread))
+    thread_dict = dict(thread)
+    thread_dict['user_id'] = thread_dict['author_id']
+    thread_dict['username'] = thread_dict['author_name'] 
+    thread_dict['timestamp'] = thread_dict['created_at']
+
+    return ThreadResponse(**thread_dict)
+
 
 # =============================================================================
 # POST ENDPOINTS
@@ -611,8 +599,8 @@ async def get_posts(thread_id: int, page: int = 1, per_page: int = 20):
 async def create_post(
     thread_id: int,
     post_data: PostCreate,
-    current_user: dict = Depends(get_current_user),
-    request: Request = Depends()
+    request: Request,
+    current_user: dict = Depends(get_current_user)
 ):
     """Reply to a thread"""
     client_ip = await get_client_ip(request)
