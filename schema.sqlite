@@ -1,0 +1,628 @@
+-- Forum Database Schema for SQLite
+-- Compatible with the Python forum system
+
+-- Enable foreign key constraints
+PRAGMA foreign_keys = ON;
+
+-- Users table with enhanced security
+CREATE TABLE users (
+    user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    password_salt VARCHAR(255) NOT NULL,
+    password_changed_at REAL NOT NULL,
+    failed_login_attempts INTEGER DEFAULT 0,
+    locked_until REAL NULL,
+    is_admin BOOLEAN DEFAULT FALSE,
+    is_banned BOOLEAN DEFAULT FALSE,
+    email_verified BOOLEAN DEFAULT FALSE,
+    email_verification_token VARCHAR(128),
+    password_reset_token VARCHAR(128),
+    password_reset_expires REAL,
+    two_factor_enabled BOOLEAN DEFAULT FALSE,
+    two_factor_secret VARCHAR(64),
+    backup_codes TEXT,
+    join_date REAL NOT NULL,
+    last_activity REAL NOT NULL,
+    last_login_ip VARCHAR(45),
+    last_login_at REAL,
+    post_count INTEGER DEFAULT 0,
+    avatar_url VARCHAR(500) DEFAULT '',
+    gdpr_consent_at REAL,
+    terms_accepted_at REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Boards table
+CREATE TABLE boards (
+    board_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name VARCHAR(100) UNIQUE NOT NULL,
+    description TEXT NOT NULL,
+    creator_id INTEGER NOT NULL,
+    deleted BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (creator_id) REFERENCES users(user_id)
+);
+
+-- Board moderators junction table
+CREATE TABLE board_moderators (
+    board_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    assigned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    assigned_by INTEGER,
+    PRIMARY KEY (board_id, user_id),
+    FOREIGN KEY (board_id) REFERENCES boards(board_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (assigned_by) REFERENCES users(user_id)
+);
+
+-- Threads table
+CREATE TABLE threads (
+    thread_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    board_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    deleted BOOLEAN DEFAULT FALSE,
+    sticky BOOLEAN DEFAULT FALSE,
+    locked BOOLEAN DEFAULT FALSE,
+    view_count INTEGER DEFAULT 0,
+    reply_count INTEGER DEFAULT 0,
+    last_post_at REAL,
+    last_post_user_id INTEGER,
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (board_id) REFERENCES boards(board_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (last_post_user_id) REFERENCES users(user_id)
+);
+
+-- Posts table
+CREATE TABLE posts (
+    post_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    thread_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    deleted BOOLEAN DEFAULT FALSE,
+    edited BOOLEAN DEFAULT FALSE,
+    edit_count INTEGER DEFAULT 0,
+    edited_at REAL,
+    edited_by INTEGER,
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (edited_by) REFERENCES users(user_id)
+);
+
+-- Post edit history
+CREATE TABLE post_edits (
+    edit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    post_id INTEGER NOT NULL,
+    editor_id INTEGER NOT NULL,
+    old_content TEXT NOT NULL,
+    new_content TEXT NOT NULL,
+    edit_reason VARCHAR(255),
+    edit_type VARCHAR(20) DEFAULT 'user',
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+    FOREIGN KEY (editor_id) REFERENCES users(user_id)
+);
+
+-- User sessions with enhanced security
+CREATE TABLE user_sessions (
+    session_id VARCHAR(128) PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    ip_address VARCHAR(45),
+    user_agent TEXT,
+    csrf_token VARCHAR(128),
+    fingerprint_hash VARCHAR(128),
+    created_at REAL NOT NULL,
+    expires_at REAL NOT NULL,
+    last_activity REAL NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    logout_at REAL NULL,
+    revoked BOOLEAN DEFAULT FALSE,
+    login_type VARCHAR(20) DEFAULT 'password',
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Security audit log
+CREATE TABLE security_audit_log (
+    audit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    event_type VARCHAR(50) NOT NULL,
+    ip_address VARCHAR(45) NOT NULL,
+    user_agent TEXT,
+    event_data TEXT,
+    risk_score INTEGER DEFAULT 0,
+    geo_location VARCHAR(100),
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL
+);
+
+-- Rate limiting table
+CREATE TABLE rate_limits (
+    limit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    identifier VARCHAR(255) NOT NULL,
+    action_type VARCHAR(50) NOT NULL,
+    attempt_count INTEGER DEFAULT 0,
+    window_start REAL NOT NULL,
+    blocked_until REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(identifier, action_type)
+);
+
+-- Content filters
+CREATE TABLE content_filters (
+    filter_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filter_name VARCHAR(100) NOT NULL,
+    filter_type VARCHAR(20) NOT NULL,
+    pattern TEXT NOT NULL,
+    action VARCHAR(20) NOT NULL,
+    severity INTEGER DEFAULT 1,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_by INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
+-- IP reputation
+CREATE TABLE ip_reputation (
+    ip_address VARCHAR(45) PRIMARY KEY,
+    reputation_score INTEGER DEFAULT 0,
+    is_blocked BOOLEAN DEFAULT FALSE,
+    block_reason VARCHAR(255),
+    blocked_until REAL,
+    first_seen REAL NOT NULL,
+    last_seen REAL NOT NULL,
+    total_requests INTEGER DEFAULT 0,
+    suspicious_activity_count INTEGER DEFAULT 0,
+    country_code VARCHAR(2),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Email security
+CREATE TABLE email_security (
+    email_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email_address VARCHAR(255) NOT NULL,
+    is_disposable BOOLEAN DEFAULT FALSE,
+    is_role_account BOOLEAN DEFAULT FALSE,
+    domain_reputation INTEGER DEFAULT 0,
+    bounce_count INTEGER DEFAULT 0,
+    last_bounce_at REAL,
+    verified_at REAL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(email_address)
+);
+
+-- API tokens
+CREATE TABLE api_tokens (
+    token_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL,
+    token_hash VARCHAR(255) NOT NULL,
+    token_name VARCHAR(100) NOT NULL,
+    permissions TEXT,
+    rate_limit INTEGER DEFAULT 1000,
+    last_used_at REAL,
+    expires_at REAL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Moderation actions log
+CREATE TABLE moderation_log (
+    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moderator_id INTEGER NOT NULL,
+    target_type VARCHAR(20) NOT NULL,
+    target_id INTEGER NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    reason TEXT,
+    details TEXT,
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (moderator_id) REFERENCES users(user_id)
+);
+
+-- User preferences
+CREATE TABLE user_preferences (
+    user_id INTEGER PRIMARY KEY,
+    email_notifications BOOLEAN DEFAULT TRUE,
+    theme VARCHAR(20) DEFAULT 'default',
+    timezone VARCHAR(50) DEFAULT 'UTC',
+    posts_per_page INTEGER DEFAULT 20,
+    signature TEXT DEFAULT '',
+    avatar_type VARCHAR(20) DEFAULT 'none',
+    show_avatars BOOLEAN DEFAULT TRUE,
+    show_signatures BOOLEAN DEFAULT TRUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+);
+
+-- Private messages
+CREATE TABLE private_messages (
+    message_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sender_id INTEGER NOT NULL,
+    recipient_id INTEGER NOT NULL,
+    subject VARCHAR(255) NOT NULL,
+    content TEXT NOT NULL,
+    read_at REAL,
+    deleted_by_sender BOOLEAN DEFAULT FALSE,
+    deleted_by_recipient BOOLEAN DEFAULT FALSE,
+    timestamp REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sender_id) REFERENCES users(user_id),
+    FOREIGN KEY (recipient_id) REFERENCES users(user_id)
+);
+
+-- Thread subscriptions
+CREATE TABLE thread_subscriptions (
+    user_id INTEGER NOT NULL,
+    thread_id INTEGER NOT NULL,
+    subscribed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    notify_email BOOLEAN DEFAULT TRUE,
+    notify_web BOOLEAN DEFAULT TRUE,
+    PRIMARY KEY (user_id, thread_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (thread_id) REFERENCES threads(thread_id) ON DELETE CASCADE
+);
+
+-- Board statistics
+CREATE TABLE board_stats (
+    board_id INTEGER PRIMARY KEY,
+    thread_count INTEGER DEFAULT 0,
+    post_count INTEGER DEFAULT 0,
+    last_post_id INTEGER,
+    last_post_at REAL,
+    last_post_user_id INTEGER,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (board_id) REFERENCES boards(board_id) ON DELETE CASCADE,
+    FOREIGN KEY (last_post_id) REFERENCES posts(post_id),
+    FOREIGN KEY (last_post_user_id) REFERENCES users(user_id)
+);
+
+-- Indexes for performance
+CREATE INDEX idx_users_username ON users(username);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_users_last_activity ON users(last_activity);
+CREATE INDEX idx_users_password_reset_token ON users(password_reset_token);
+CREATE INDEX idx_users_email_verification_token ON users(email_verification_token);
+CREATE INDEX idx_users_failed_login_attempts ON users(failed_login_attempts);
+CREATE INDEX idx_users_locked_until ON users(locked_until);
+
+CREATE INDEX idx_boards_name ON boards(name);
+CREATE INDEX idx_boards_deleted ON boards(deleted);
+
+CREATE INDEX idx_threads_board_id ON threads(board_id);
+CREATE INDEX idx_threads_user_id ON threads(user_id);
+CREATE INDEX idx_threads_deleted ON threads(deleted);
+CREATE INDEX idx_threads_sticky ON threads(sticky);
+CREATE INDEX idx_threads_timestamp ON threads(timestamp);
+CREATE INDEX idx_threads_last_post_at ON threads(last_post_at);
+
+CREATE INDEX idx_posts_thread_id ON posts(thread_id);
+CREATE INDEX idx_posts_user_id ON posts(user_id);
+CREATE INDEX idx_posts_deleted ON posts(deleted);
+CREATE INDEX idx_posts_timestamp ON posts(timestamp);
+
+CREATE INDEX idx_post_edits_post_id ON post_edits(post_id);
+CREATE INDEX idx_post_edits_timestamp ON post_edits(timestamp);
+
+CREATE INDEX idx_moderation_log_moderator_id ON moderation_log(moderator_id);
+CREATE INDEX idx_moderation_log_target ON moderation_log(target_type, target_id);
+CREATE INDEX idx_moderation_log_timestamp ON moderation_log(timestamp);
+
+CREATE INDEX idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX idx_user_sessions_expires_at ON user_sessions(expires_at);
+CREATE INDEX idx_user_sessions_csrf_token ON user_sessions(csrf_token);
+CREATE INDEX idx_user_sessions_fingerprint ON user_sessions(fingerprint_hash);
+
+CREATE INDEX idx_private_messages_sender ON private_messages(sender_id);
+CREATE INDEX idx_private_messages_recipient ON private_messages(recipient_id);
+CREATE INDEX idx_private_messages_timestamp ON private_messages(timestamp);
+
+CREATE INDEX idx_security_audit_user_id ON security_audit_log(user_id);
+CREATE INDEX idx_security_audit_event_type ON security_audit_log(event_type);
+CREATE INDEX idx_security_audit_ip ON security_audit_log(ip_address);
+CREATE INDEX idx_security_audit_timestamp ON security_audit_log(timestamp);
+CREATE INDEX idx_security_audit_risk_score ON security_audit_log(risk_score);
+
+CREATE INDEX idx_rate_limits_identifier ON rate_limits(identifier);
+CREATE INDEX idx_rate_limits_action_type ON rate_limits(action_type);
+CREATE INDEX idx_rate_limits_window_start ON rate_limits(window_start);
+CREATE INDEX idx_rate_limits_blocked_until ON rate_limits(blocked_until);
+
+CREATE INDEX idx_content_filters_type ON content_filters(filter_type);
+CREATE INDEX idx_content_filters_active ON content_filters(is_active);
+
+CREATE INDEX idx_ip_reputation_blocked ON ip_reputation(is_blocked);
+CREATE INDEX idx_ip_reputation_score ON ip_reputation(reputation_score);
+CREATE INDEX idx_ip_reputation_last_seen ON ip_reputation(last_seen);
+
+CREATE INDEX idx_email_security_disposable ON email_security(is_disposable);
+CREATE INDEX idx_email_security_reputation ON email_security(domain_reputation);
+
+CREATE INDEX idx_api_tokens_user_id ON api_tokens(user_id);
+CREATE INDEX idx_api_tokens_hash ON api_tokens(token_hash);
+CREATE INDEX idx_api_tokens_expires_at ON api_tokens(expires_at);
+
+-- Triggers for maintaining data integrity and security
+CREATE TRIGGER log_login_attempt
+    AFTER INSERT ON user_sessions
+BEGIN
+    INSERT INTO security_audit_log (user_id, event_type, ip_address, user_agent, timestamp)
+    VALUES (NEW.user_id, 'login_success', NEW.ip_address, NEW.user_agent, NEW.created_at);
+END;
+
+CREATE TRIGGER increment_failed_login
+    AFTER UPDATE ON users
+    WHEN NEW.failed_login_attempts > OLD.failed_login_attempts
+BEGIN
+    INSERT INTO security_audit_log (user_id, event_type, ip_address, event_data, timestamp)
+    VALUES (NEW.user_id, 'login_failed', '', 
+            json_object('attempts', NEW.failed_login_attempts), 
+            datetime('now', 'unixepoch'));
+    
+    UPDATE users 
+    SET locked_until = strftime('%s', 'now', '+15 minutes')
+    WHERE user_id = NEW.user_id AND NEW.failed_login_attempts >= 5;
+END;
+
+CREATE TRIGGER log_password_change
+    AFTER UPDATE ON users
+    WHEN NEW.password_hash != OLD.password_hash
+BEGIN
+    INSERT INTO security_audit_log (user_id, event_type, ip_address, timestamp)
+    VALUES (NEW.user_id, 'password_changed', '', strftime('%s', 'now'));
+    
+    UPDATE users 
+    SET failed_login_attempts = 0, locked_until = NULL
+    WHERE user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER log_admin_change
+    AFTER UPDATE ON users
+    WHEN NEW.is_admin != OLD.is_admin
+BEGIN
+    INSERT INTO security_audit_log (user_id, event_type, event_data, timestamp)
+    VALUES (NEW.user_id, 
+            CASE WHEN NEW.is_admin THEN 'admin_granted' ELSE 'admin_revoked' END,
+            json_object('previous_status', OLD.is_admin, 'new_status', NEW.is_admin),
+            strftime('%s', 'now'));
+END;
+
+CREATE TRIGGER log_user_ban
+    AFTER UPDATE ON users
+    WHEN NEW.is_banned != OLD.is_banned
+BEGIN
+    INSERT INTO security_audit_log (user_id, event_type, event_data, timestamp)
+    VALUES (NEW.user_id, 
+            CASE WHEN NEW.is_banned THEN 'user_banned' ELSE 'user_unbanned' END,
+            json_object('previous_status', OLD.is_banned, 'new_status', NEW.is_banned),
+            strftime('%s', 'now'));
+END;
+
+CREATE TRIGGER cleanup_expired_sessions
+    AFTER INSERT ON user_sessions
+BEGIN
+    DELETE FROM user_sessions 
+    WHERE expires_at < strftime('%s', 'now') AND user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER cleanup_expired_rate_limits
+    AFTER INSERT ON rate_limits
+BEGIN
+    DELETE FROM rate_limits 
+    WHERE blocked_until IS NOT NULL 
+    AND blocked_until < strftime('%s', 'now')
+    AND identifier = NEW.identifier;
+END;
+
+CREATE TRIGGER update_thread_reply_count_insert
+    AFTER INSERT ON posts
+    WHEN NEW.deleted = FALSE
+BEGIN
+    UPDATE threads 
+    SET reply_count = reply_count + 1,
+        last_post_at = NEW.timestamp,
+        last_post_user_id = NEW.user_id,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE thread_id = NEW.thread_id;
+END;
+
+CREATE TRIGGER update_thread_reply_count_delete
+    AFTER UPDATE ON posts
+    WHEN OLD.deleted = FALSE AND NEW.deleted = TRUE
+BEGIN
+    UPDATE threads 
+    SET reply_count = reply_count - 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE thread_id = NEW.thread_id;
+END;
+
+CREATE TRIGGER update_thread_reply_count_restore
+    AFTER UPDATE ON posts
+    WHEN OLD.deleted = TRUE AND NEW.deleted = FALSE
+BEGIN
+    UPDATE threads 
+    SET reply_count = reply_count + 1,
+        last_post_at = NEW.timestamp,
+        last_post_user_id = NEW.user_id,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE thread_id = NEW.thread_id;
+END;
+
+CREATE TRIGGER update_user_post_count_insert
+    AFTER INSERT ON posts
+    WHEN NEW.deleted = FALSE
+BEGIN
+    UPDATE users 
+    SET post_count = post_count + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER update_user_post_count_delete
+    AFTER UPDATE ON posts
+    WHEN OLD.deleted = FALSE AND NEW.deleted = TRUE
+BEGIN
+    UPDATE users 
+    SET post_count = post_count - 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER update_user_post_count_restore
+    AFTER UPDATE ON posts
+    WHEN OLD.deleted = TRUE AND NEW.deleted = FALSE
+BEGIN
+    UPDATE users 
+    SET post_count = post_count + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER update_board_stats_new_thread
+    AFTER INSERT ON threads
+    WHEN NEW.deleted = FALSE
+BEGIN
+    UPDATE board_stats 
+    SET thread_count = thread_count + 1,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE board_id = NEW.board_id;
+    
+    INSERT OR IGNORE INTO board_stats (board_id, thread_count, post_count)
+    VALUES (NEW.board_id, 1, 0);
+END;
+
+CREATE TRIGGER update_board_stats_new_post
+    AFTER INSERT ON posts
+    WHEN NEW.deleted = FALSE
+BEGIN
+    UPDATE board_stats 
+    SET post_count = post_count + 1,
+        last_post_id = NEW.post_id,
+        last_post_at = NEW.timestamp,
+        last_post_user_id = NEW.user_id,
+        updated_at = CURRENT_TIMESTAMP
+    WHERE board_id = (SELECT board_id FROM threads WHERE thread_id = NEW.thread_id);
+END;
+
+CREATE TRIGGER update_users_timestamp
+    AFTER UPDATE ON users
+BEGIN
+    UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE user_id = NEW.user_id;
+END;
+
+CREATE TRIGGER update_boards_timestamp
+    AFTER UPDATE ON boards
+BEGIN
+    UPDATE boards SET updated_at = CURRENT_TIMESTAMP WHERE board_id = NEW.board_id;
+END;
+
+CREATE TRIGGER update_threads_timestamp
+    AFTER UPDATE ON threads
+BEGIN
+    UPDATE threads SET updated_at = CURRENT_TIMESTAMP WHERE thread_id = NEW.thread_id;
+END;
+
+CREATE TRIGGER update_posts_timestamp
+    AFTER UPDATE ON posts
+BEGIN
+    UPDATE posts SET updated_at = CURRENT_TIMESTAMP WHERE post_id = NEW.post_id;
+END;
+
+-- Views for common queries
+CREATE VIEW active_threads AS
+SELECT 
+    t.thread_id,
+    t.board_id,
+    t.title,
+    t.user_id as author_id,
+    u1.username as author_name,
+    t.reply_count,
+    t.view_count,
+    t.sticky,
+    t.locked,
+    t.timestamp as created_at,
+    t.last_post_at,
+    t.last_post_user_id,
+    u2.username as last_post_username
+FROM threads t
+JOIN users u1 ON t.user_id = u1.user_id
+LEFT JOIN users u2 ON t.last_post_user_id = u2.user_id
+WHERE t.deleted = FALSE
+ORDER BY t.sticky DESC, t.last_post_at DESC;
+
+CREATE VIEW board_summary AS
+SELECT 
+    b.board_id,
+    b.name,
+    b.description,
+    b.creator_id,
+    u.username as creator_name,
+    COALESCE(bs.thread_count, 0) as thread_count,
+    COALESCE(bs.post_count, 0) as post_count,
+    bs.last_post_at,
+    bs.last_post_user_id,
+    u2.username as last_post_username
+FROM boards b
+JOIN users u ON b.creator_id = u.user_id
+LEFT JOIN board_stats bs ON b.board_id = bs.board_id
+LEFT JOIN users u2 ON bs.last_post_user_id = u2.user_id
+WHERE b.deleted = FALSE
+ORDER BY b.name;
+
+CREATE VIEW user_activity AS
+SELECT 
+    u.user_id,
+    u.username,
+    u.email,
+    u.is_admin,
+    u.is_banned,
+    u.join_date,
+    u.last_activity,
+    u.post_count,
+    COUNT(DISTINCT t.thread_id) as thread_count,
+    COUNT(DISTINCT bm.board_id) as moderating_boards
+FROM users u
+LEFT JOIN threads t ON u.user_id = t.user_id AND t.deleted = FALSE
+LEFT JOIN board_moderators bm ON u.user_id = bm.user_id
+WHERE u.user_id > 0
+GROUP BY u.user_id, u.username, u.email, u.is_admin, u.is_banned, 
+         u.join_date, u.last_activity, u.post_count
+ORDER BY u.last_activity DESC;
+
+CREATE VIEW recent_posts AS
+SELECT 
+    p.post_id,
+    p.thread_id,
+    t.title as thread_title,
+    t.board_id,
+    b.name as board_name,
+    p.user_id,
+    u.username,
+    p.content,
+    p.timestamp,
+    p.edited,
+    p.edit_count
+FROM posts p
+JOIN threads t ON p.thread_id = t.thread_id
+JOIN boards b ON t.board_id = b.board_id
+JOIN users u ON p.user_id = u.user_id
+WHERE p.deleted = FALSE 
+  AND t.deleted = FALSE 
+  AND b.deleted = FALSE
+ORDER BY p.timestamp DESC;
