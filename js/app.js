@@ -1,4 +1,3 @@
-// forum.js
 class ForumApp {
     constructor() {
         this.api = new ForumAPI();
