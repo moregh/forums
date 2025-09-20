@@ -44,6 +44,9 @@ class ForumApp {
 
         // Load initial data
         await this.loadBoards();
+        
+        // Navigate to current route
+        this.router.handleRoute();
     }
 
     async loadBoards() {
@@ -168,13 +171,17 @@ class ForumApp {
         }
     }
 
-    async showBoard(boardId) {
+    async showBoard(boardId, page = 1) {
         try {
             this.state.setState({ loading: true, error: null });
-            const threads = await this.api.getThreads(boardId);
+            const threads = await this.api.getThreads(boardId, page);
             const { boards } = this.state.getState();
             const board = boards.find(b => b.board_id == boardId);
             const currentUser = this.state.getState().user;
+            
+            // Get total count for pagination
+            const totalThreads = await this.api.getThreadsCount(boardId);
+            const totalPages = Math.ceil(totalThreads / 20);
             
             const content = document.getElementById('content');
             content.innerHTML = `
@@ -187,11 +194,16 @@ class ForumApp {
                 <div class="threads-list">
                     ${UIComponents.renderThreads(threads, currentUser)}
                 </div>
+                ${UIComponents.renderPagination(page, totalPages, (newPage) => 
+                    `forum.showBoard(${boardId}, ${newPage})`
+                )}
             `;
             
             this.state.setState({ 
                 currentBoard: board, 
                 threads, 
+                currentPage: page,
+                totalPages,
                 loading: false 
             });
         } catch (error) {
@@ -202,28 +214,40 @@ class ForumApp {
         }
     }
 
-    async showThread(threadId) {
+    async showThread(threadId, page = 1) {
         try {
             this.state.setState({ loading: true, error: null });
-            const posts = await this.api.getPosts(threadId);
+            const posts = await this.api.getPosts(threadId, page);
             const currentUser = this.state.getState().user;
+            
+            // Get total count for pagination
+            const totalPosts = await this.api.getPostsCount(threadId);
+            const totalPages = Math.ceil(totalPosts / 20);
+            
+            // Get thread info
+            const threadInfo = await this.api.getThreadInfo(threadId);
             
             const content = document.getElementById('content');
             content.innerHTML = `
                 <div class="page-header">
-                    <h1>Thread</h1>
-                    ${currentUser ? `
+                    <h1>${threadInfo ? UIComponents.escapeHtml(threadInfo.title) : 'Thread'}</h1>
+                    ${currentUser && !threadInfo?.locked ? `
                         <button onclick="forum.showReplyForm(${threadId})">Reply</button>
                     ` : ''}
                 </div>
                 <div class="posts-list">
                     ${UIComponents.renderPosts(posts, currentUser)}
                 </div>
+                ${UIComponents.renderPagination(page, totalPages, (newPage) => 
+                    `forum.showThread(${threadId}, ${newPage})`
+                )}
             `;
             
             this.state.setState({ 
-                currentThread: { thread_id: threadId }, 
+                currentThread: { thread_id: threadId, ...threadInfo }, 
                 posts, 
+                currentPage: page,
+                totalPages,
                 loading: false 
             });
         } catch (error) {
@@ -307,16 +331,10 @@ class ForumApp {
             UIComponents.showSuccess('Post updated successfully!');
             event.target.closest('.modal').remove();
             
-            // Update the post content in the DOM
-            const postContentElement = document.getElementById(`post-content-${postId}`);
-            if (postContentElement) {
-                postContentElement.innerHTML = UIComponents.escapeHtml(content).replace(/\n/g, '<br>');
-            }
-            
             // Refresh the current thread
             const currentThread = this.state.getState().currentThread;
             if (currentThread) {
-                this.showThread(currentThread.thread_id);
+                this.showThread(currentThread.thread_id, this.state.getState().currentPage || 1);
             }
         } catch (error) {
             UIComponents.showError(error.message);
@@ -332,17 +350,10 @@ class ForumApp {
             await this.api.deletePost(postId);
             UIComponents.showSuccess('Post deleted successfully!');
             
-            // Remove the post from the DOM
-            const postElement = document.getElementById(`post-${postId}`);
-            if (postElement) {
-                postElement.style.opacity = '0.5';
-                postElement.innerHTML += '<div class="deleted-overlay">This post has been deleted</div>';
-            }
-            
             // Refresh the current thread
             const currentThread = this.state.getState().currentThread;
             if (currentThread) {
-                setTimeout(() => this.showThread(currentThread.thread_id), 1000);
+                setTimeout(() => this.showThread(currentThread.thread_id, this.state.getState().currentPage || 1), 1000);
             }
         } catch (error) {
             UIComponents.showError(error.message);
@@ -378,7 +389,7 @@ class ForumApp {
             // Refresh the current board view
             const currentBoard = this.state.getState().currentBoard;
             if (currentBoard) {
-                this.showBoard(currentBoard.board_id);
+                this.showBoard(currentBoard.board_id, this.state.getState().currentPage || 1);
             }
         } catch (error) {
             UIComponents.showError(error.message);
@@ -393,7 +404,7 @@ class ForumApp {
             // Refresh the current board view
             const currentBoard = this.state.getState().currentBoard;
             if (currentBoard) {
-                this.showBoard(currentBoard.board_id);
+                this.showBoard(currentBoard.board_id, this.state.getState().currentPage || 1);
             }
         } catch (error) {
             UIComponents.showError(error.message);
@@ -558,7 +569,11 @@ class ForumApp {
             await this.api.createPost(threadId, content);
             UIComponents.showSuccess('Reply posted successfully!');
             event.target.closest('.modal').remove();
-            this.showThread(threadId); // Refresh the thread
+            
+            // Get the last page for pagination
+            const totalPosts = await this.api.getPostsCount(threadId);
+            const lastPage = Math.ceil(totalPosts / 20);
+            this.showThread(threadId, lastPage); // Go to last page to see new post
         } catch (error) {
             UIComponents.showError(error.message);
         }

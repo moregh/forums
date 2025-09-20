@@ -3,12 +3,10 @@ class Router {
         this.routes = {};
         this.currentRoute = null;
         this.isNavigating = false;
+        this.initialized = false;
         
         // Listen for browser navigation
         window.addEventListener('popstate', () => this.handleRoute());
-        
-        // Handle initial route
-        this.handleRoute();
     }
 
     // Register route handler
@@ -20,7 +18,7 @@ class Router {
     navigate(path, pushState = true) {
         if (this.isNavigating) return; // Prevent recursion
         
-        if (pushState) {
+        if (pushState && path !== window.location.pathname) {
             history.pushState({}, '', path);
         }
         this.handleRoute();
@@ -61,8 +59,21 @@ class Router {
             if (this.routes['/']) {
                 this.routes['/']({});
             }
+        } else if (!routeFound && path === '/') {
+            // Handle home route explicitly
+            if (this.routes['/']) {
+                this.routes['/']({});
+            }
         }
         
         this.isNavigating = false;
+        this.initialized = true;
+    }
+
+    // Initialize router after all routes are registered
+    init() {
+        if (!this.initialized) {
+            this.handleRoute();
+        }
     }
 }

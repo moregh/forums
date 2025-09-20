@@ -82,7 +82,33 @@ class UIComponents {
         return currentUser && currentUser.is_admin;
     }
 
+    static renderPagination(currentPage, totalPages, onPageChange) {
+        if (totalPages <= 1 && currentPage === 1) return '';
+        
+        let pagination = '<div class="pagination">';
+        
+        // Previous button
+        if (currentPage > 1) {
+            pagination += `<button onclick="${onPageChange(currentPage - 1)}" class="pagination-btn">« Previous</button>`;
+        }
+        
+        // Current page indicator
+        pagination += `<span class="pagination-info">Page ${currentPage}</span>`;
+        
+        // Next button - show if we think there might be more pages
+        if (currentPage < totalPages) {
+            pagination += `<button onclick="${onPageChange(currentPage + 1)}" class="pagination-btn">Next »</button>`;
+        }
+        
+        pagination += '</div>';
+        return pagination;
+    }
+
     static renderBoards(boards) {
+        if (!boards || boards.length === 0) {
+            return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
+        }
+        
         return boards.map(board => `
             <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
                 <h3>${this.escapeHtml(board.name)}</h3>
@@ -99,6 +125,10 @@ class UIComponents {
     }
 
     static renderThreads(threads, currentUser) {
+        if (!threads || threads.length === 0) {
+            return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
+        }
+        
         return threads.map(thread => `
             <div class="thread-row ${thread.sticky ? 'sticky' : ''}" 
                  onclick="forum.router.navigate('/threads/${thread.thread_id}')">
@@ -140,6 +170,10 @@ class UIComponents {
     }
 
     static renderPosts(posts, currentUser) {
+        if (!posts || posts.length === 0) {
+            return '<div class="empty-state"><h3>No posts</h3><p>No posts found in this thread.</p></div>';
+        }
+        
         return posts.map(post => `
             <div class="post" id="post-${post.post_id}">
                 <div class="post-header">

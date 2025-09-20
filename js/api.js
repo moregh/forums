@@ -43,14 +43,22 @@ class ForumAPI {
             // Handle authentication errors
             if (response.status === 401) {
                 this.clearAuth();
-                window.location.href = '/login.html';
-                return;
+                if (window.forum) {
+                    window.forum.handleAuthError();
+                }
+                return null;
+            }
+
+            // Handle 404 errors gracefully
+            if (response.status === 404) {
+                const errorData = await response.json().catch(() => ({ message: 'Not found' }));
+                throw new Error(errorData.message || 'Resource not found');
             }
 
             const data = await response.json();
             
             if (!response.ok) {
-                throw new Error(data.message || 'Request failed');
+                throw new Error(data.message || `Request failed with status ${response.status}`);
             }
 
             return data;
@@ -62,31 +70,26 @@ class ForumAPI {
 
     // Authentication methods
     async register(username, email, password) {
-        // Hash password on client side before sending
-        const { hash, salt } = await CryptoUtils.hashPassword(password);
-        const passwordHash = `${hash}:${salt}`; // Store hash and salt together
-        
         const response = await this.request('/api/auth/register', {
             method: 'POST',
-            body: JSON.stringify({ username, email, password: passwordHash })
+            body: JSON.stringify({ username, email, password })
         });
         
-        this.setAuth(response.access_token, response.user);
+        if (response) {
+            this.setAuth(response.access_token, response.user);
+        }
         return response;
     }
 
     async login(username, password) {
-        // For login, we need to get the user's salt first, then hash with that salt
-        // This is a simplified approach - in production, you might want a different flow
-        const { hash, salt } = await CryptoUtils.hashPassword(password);
-        const passwordHash = `${hash}:${salt}`;
-        
         const response = await this.request('/api/auth/login', {
             method: 'POST',
-            body: JSON.stringify({ username, password: passwordHash })
+            body: JSON.stringify({ username, password })
         });
         
-        this.setAuth(response.access_token, response.user);
+        if (response) {
+            this.setAuth(response.access_token, response.user);
+        }
         return response;
     }
 
@@ -99,7 +102,9 @@ class ForumAPI {
             method: 'POST'
         });
         
-        this.setAuth(response.access_token, response.user);
+        if (response) {
+            this.setAuth(response.access_token, response.user);
+        }
         return response;
     }
 
@@ -118,6 +123,44 @@ class ForumAPI {
     // Thread methods
     async getThreads(boardId, page = 1, perPage = 20) {
         return this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
+    }
+
+    async getThreadsCount(boardId) {
+        // Get a reasonable estimate by checking multiple pages
+        try {
+            let totalCount = 0;
+            let page = 1;
+            const perPage = 100;
+            
+            while (page <= 10) { // Limit to 10 pages max to avoid infinite loops
+                const threads = await this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
+                if (!threads || threads.length === 0) break;
+                
+                totalCount += threads.length;
+                if (threads.length < perPage) break; // Last page
+                page++;
+            }
+            
+            return totalCount;
+        } catch (error) {
+            console.warn('Failed to get threads count:', error);
+            return 20; // Return a default count
+        }
+    }
+
+    async getThreadInfo(threadId) {
+        try {
+            return await this.request(`/api/threads/${threadId}`);
+        } catch (error) {
+            console.warn(`Failed to get thread info for ${threadId}:`, error);
+            // Return a fallback object
+            return {
+                thread_id: threadId,
+                title: `Thread ${threadId}`,
+                locked: false,
+                sticky: false
+            };
+        }
     }
 
     async createThread(boardId, title, content) {
@@ -150,6 +193,28 @@ class ForumAPI {
     // Post methods
     async getPosts(threadId, page = 1, perPage = 20) {
         return this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
+    }
+
+    async getPostsCount(threadId) {
+        try {
+            let totalCount = 0;
+            let page = 1;
+            const perPage = 100;
+            
+            while (page <= 10) { // Limit to 10 pages max
+                const posts = await this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
+                if (!posts || posts.length === 0) break;
+                
+                totalCount += posts.length;
+                if (posts.length < perPage) break; // Last page
+                page++;
+            }
+            
+            return totalCount;
+        } catch (error) {
+            console.warn('Failed to get posts count:', error);
+            return 20; // Return a default count
+        }
     }
 
     async createPost(threadId, content) {
