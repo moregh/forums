@@ -61,6 +61,7 @@ class UIComponents {
     }
 
     static escapeHtml(text) {
+        if (!text) return '';
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
@@ -125,77 +126,105 @@ class UIComponents {
     }
 
     static renderThreads(threads, currentUser) {
-    if (!threads || threads.length === 0) {
-        return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
+        if (!threads || threads.length === 0) {
+            return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
+        }
+        
+        return threads.map(thread => {
+            // Ensure we have all required thread properties with safe defaults
+            const safeThread = {
+                thread_id: thread.thread_id,
+                title: thread.title || 'Untitled Thread',
+                username: thread.username || thread.author_name || 'Unknown',
+                timestamp: thread.timestamp || thread.created_at || 0,
+                sticky: thread.sticky || false,
+                locked: thread.locked || false,
+                reply_count: thread.reply_count || 0,
+                view_count: thread.view_count || 0,
+                last_post_username: thread.last_post_username || null,
+                last_post_at: thread.last_post_at || null
+            };
+            
+            return `
+                <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
+                     onclick="forum.showThread(${safeThread.thread_id}); forum.router.navigate('/threads/${safeThread.thread_id}', false);">
+                    <div class="thread-info">
+                        <h4>${this.escapeHtml(safeThread.title)}</h4>
+                        <span class="thread-meta">
+                            by ${this.escapeHtml(safeThread.username)} • 
+                            ${this.formatDate(safeThread.timestamp)}
+                            ${safeThread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
+                            ${safeThread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
+                        </span>
+                        ${this.canModerateThread(currentUser) ? `
+                            <div class="thread-actions" onclick="event.stopPropagation()">
+                                <button onclick="forum.toggleThreadSticky(${safeThread.thread_id}, ${!safeThread.sticky})" 
+                                        class="btn-small ${safeThread.sticky ? 'btn-warning' : 'btn-secondary'}">
+                                    ${safeThread.sticky ? 'Unsticky' : 'Sticky'}
+                                </button>
+                                <button onclick="forum.toggleThreadLock(${safeThread.thread_id}, ${!safeThread.locked})" 
+                                        class="btn-small ${safeThread.locked ? 'btn-success' : 'btn-warning'}">
+                                    ${safeThread.locked ? 'Unlock' : 'Lock'}
+                                </button>
+                                <button onclick="forum.deleteThread(${safeThread.thread_id})" 
+                                        class="btn-small btn-danger">Delete</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="thread-stats">
+                        <span>${safeThread.reply_count} replies</span>
+                        <span>${safeThread.view_count} views</span>
+                        ${safeThread.last_post_username ? `
+                            <div class="last-post">
+                                Last: ${this.escapeHtml(safeThread.last_post_username)}<br>
+                                ${this.formatDate(safeThread.last_post_at)}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
-    
-    return threads.map(thread => `
-        <div class="thread-row ${thread.sticky ? 'sticky' : ''}" 
-             onclick="forum.showThread(${thread.thread_id}); forum.router.navigate('/threads/${thread.thread_id}', false);">
-            <div class="thread-info">
-                <h4>${this.escapeHtml(thread.title)}</h4>
-                <span class="thread-meta">
-                    by ${this.escapeHtml(thread.username)} • 
-                    ${this.formatDate(thread.timestamp)}
-                    ${thread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
-                    ${thread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
-                </span>
-                ${this.canModerateThread(currentUser) ? `
-                    <div class="thread-actions" onclick="event.stopPropagation()">
-                        <button onclick="forum.toggleThreadSticky(${thread.thread_id}, ${!thread.sticky})" 
-                                class="btn-small ${thread.sticky ? 'btn-warning' : 'btn-secondary'}">
-                            ${thread.sticky ? 'Unsticky' : 'Sticky'}
-                        </button>
-                        <button onclick="forum.toggleThreadLock(${thread.thread_id}, ${!thread.locked})" 
-                                class="btn-small ${thread.locked ? 'btn-success' : 'btn-warning'}">
-                            ${thread.locked ? 'Unlock' : 'Lock'}
-                        </button>
-                        <button onclick="forum.deleteThread(${thread.thread_id})" 
-                                class="btn-small btn-danger">Delete</button>
-                    </div>
-                ` : ''}
-            </div>
-            <div class="thread-stats">
-                <span>${thread.reply_count || 0} replies</span>
-                <span>${thread.view_count || 0} views</span>
-                ${thread.last_post_username ? `
-                    <div class="last-post">
-                        Last: ${this.escapeHtml(thread.last_post_username)}<br>
-                        ${this.formatDate(thread.last_post_at)}
-                    </div>
-                ` : ''}
-            </div>
-        </div>
-    `).join('');
-}
 
     static renderPosts(posts, currentUser) {
         if (!posts || posts.length === 0) {
             return '<div class="empty-state"><h3>No posts</h3><p>No posts found in this thread.</p></div>';
         }
         
-        return posts.map(post => `
-            <div class="post" id="post-${post.post_id}">
-                <div class="post-header">
-                    <span class="post-author">${this.escapeHtml(post.username)}</span>
-                    <span class="post-date">${this.formatDate(post.timestamp)}</span>
-                    ${post.edited ? '<span class="edited-badge">Edited</span>' : ''}
-                    ${currentUser ? `
-                        <div class="post-actions">
-                            ${this.canEditPost(post, currentUser) ? `
-                                <button onclick="forum.editPost(${post.post_id})" class="btn-small btn-secondary">Edit</button>
-                            ` : ''}
-                            ${this.canDeletePost(post, currentUser) ? `
-                                <button onclick="forum.deletePost(${post.post_id})" class="btn-small btn-danger">Delete</button>
-                            ` : ''}
-                        </div>
-                    ` : ''}
+        return posts.map(post => {
+            // Ensure we have all required post properties with safe defaults
+            const safePost = {
+                post_id: post.post_id,
+                user_id: post.user_id,
+                username: post.username || 'Unknown',
+                content: post.content || '',
+                timestamp: post.timestamp || 0,
+                edited: post.edited || false
+            };
+            
+            return `
+                <div class="post" id="post-${safePost.post_id}">
+                    <div class="post-header">
+                        <span class="post-author">${this.escapeHtml(safePost.username)}</span>
+                        <span class="post-date">${this.formatDate(safePost.timestamp)}</span>
+                        ${safePost.edited ? '<span class="edited-badge">Edited</span>' : ''}
+                        ${currentUser ? `
+                            <div class="post-actions">
+                                ${this.canEditPost(safePost, currentUser) ? `
+                                    <button onclick="forum.editPost(${safePost.post_id})" class="btn-small btn-secondary">Edit</button>
+                                ` : ''}
+                                ${this.canDeletePost(safePost, currentUser) ? `
+                                    <button onclick="forum.deletePost(${safePost.post_id})" class="btn-small btn-danger">Delete</button>
+                                ` : ''}
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="post-content" id="post-content-${safePost.post_id}">
+                        ${this.escapeHtml(safePost.content).replace(/\n/g, '<br>')}
+                    </div>
                 </div>
-                <div class="post-content" id="post-content-${post.post_id}">
-                    ${this.escapeHtml(post.content).replace(/\n/g, '<br>')}
-                </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
     }
 
     static renderAdminPanel(users) {

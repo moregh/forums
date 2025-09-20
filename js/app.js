@@ -97,8 +97,8 @@ class ForumApp {
             const { boards, user } = this.state.getState();
             const board = boards.find(b => b.board_id == boardId);
 
-            const totalThreads = await this.api.getThreadsCount(boardId);
-            const totalPages = Math.ceil(totalThreads / 20);
+            const totalThreads = board?.thread_count || 25; // todo: get rid of this hardcoded value
+            const totalPages = Math.ceil(totalThreads / 20);  // todo: get rid of this hardcoded value
 
             document.getElementById('content').innerHTML =
                 Templates.board(board, threads, user, page, totalPages);
@@ -115,32 +115,113 @@ class ForumApp {
         }
     }
 
-    async showThread(threadId, page = 1, threadData = null) {
+    // Replace the entire showThread method in app.js with this version
+// This eliminates ALL redundant API calls and fixes the flickering
+
+async showThread(threadId, page = 1, threadData = null) {
     try {
         this.state.setState({ loading: true, error: null });
-        const posts = await this.api.getPosts(threadId, page);
+        
+        console.log('Loading thread:', threadId, 'page:', page);
+        
+        // ONLY make the 2 necessary API calls
+        let posts, threadInfo;
+        
+        if (threadData) {
+            // If we already have thread data (from clicking in board view), use it
+            posts = await this.api.getPosts(threadId, page);
+            threadInfo = threadData;
+            console.log('Using provided thread data');
+        } else {
+            // Make both calls in parallel for efficiency
+            [posts, threadInfo] = await Promise.all([
+                this.api.getPosts(threadId, page),
+                this.api.getThreadInfo(threadId)
+            ]);
+            console.log('Fetched thread data from API');
+        }
+        
+        console.log('Posts loaded:', posts?.length || 0);
+        console.log('Thread info:', threadInfo);
+        
         const user = this.state.getState().user;
-
-        const totalPosts = await this.api.getPostsCount(threadId);
+        
+        // Calculate pagination from thread reply_count (NO additional API calls)
+        const totalPosts = (threadInfo?.reply_count || 0) + 1; // +1 for original post
         const totalPages = Math.ceil(totalPosts / 20);
         
-        // Use provided thread data, or try to get from current state, or fetch from API
-        let threadInfo = threadData || 
-                        this.state.getState().threads?.find(t => t.thread_id == threadId) ||
-                        await this.api.getThreadInfo(threadId);
+        console.log('Total posts calculated:', totalPosts, 'Total pages:', totalPages);
+        
+        // Ensure we have valid thread info with comprehensive fallbacks
+        const safeThreadInfo = {
+            thread_id: parseInt(threadId),
+            title: threadInfo?.title || `Thread ${threadId}`,
+            locked: Boolean(threadInfo?.locked),
+            sticky: Boolean(threadInfo?.sticky),
+            reply_count: threadInfo?.reply_count || 0,
+            view_count: threadInfo?.view_count || 0,
+            user_id: threadInfo?.user_id || threadInfo?.author_id || 0,
+            username: threadInfo?.username || threadInfo?.author_name || 'Unknown',
+            timestamp: threadInfo?.timestamp || threadInfo?.created_at || Date.now() / 1000,
+            board_id: threadInfo?.board_id || 0,
+            last_post_at: threadInfo?.last_post_at || null,
+            last_post_username: threadInfo?.last_post_username || null
+        };
+        
+        console.log('Safe thread info created:', safeThreadInfo);
+        
+        // Validate posts array
+        const safePosts = Array.isArray(posts) ? posts : [];
+        console.log('Safe posts array length:', safePosts.length);
+        
+        // Generate HTML template
+        const content = document.getElementById('content');
+        if (!content) {
+            throw new Error('Content element not found');
+        }
+        
+        const threadHTML = Templates.thread(safeThreadInfo, safePosts, user, page, totalPages);
+        console.log('Generated HTML length:', threadHTML?.length || 0);
+        
+        if (!threadHTML || threadHTML.length < 100) {
+            throw new Error('Generated HTML is too short, likely template error');
+        }
+        
+        // Set the content
+        content.innerHTML = threadHTML;
+        console.log('HTML set successfully');
 
-        document.getElementById('content').innerHTML =
-            Templates.thread(threadInfo, posts, user, page, totalPages);
-
+        // Update state
         this.state.setState({ 
-            currentThread: { thread_id: threadId, ...threadInfo }, 
-            posts, 
+            currentThread: safeThreadInfo, 
+            posts: safePosts, 
             currentPage: page,
-            totalPages,
+            totalPages: totalPages,
             loading: false 
         });
+        
+        console.log('State updated, thread rendered successfully');
+        
     } catch (error) {
-        this.state.setState({ error: error.message, loading: false });
+        console.error('Error in showThread:', error);
+        console.error('Stack trace:', error.stack);
+        
+        // Show error state instead of blank screen
+        const content = document.getElementById('content');
+        if (content) {
+            content.innerHTML = `
+                <div class="error-state">
+                    <h3>Error Loading Thread</h3>
+                    <p>There was a problem loading this thread. Please try again.</p>
+                    <button onclick="forum.router.navigate('/')">Return to Home</button>
+                </div>
+            `;
+        }
+        
+        this.state.setState({ 
+            error: `Failed to load thread: ${error.message}`, 
+            loading: false 
+        });
     }
 }
 
@@ -387,8 +468,8 @@ class ForumApp {
             UIComponents.showSuccess('Reply posted successfully!');
             event.target.closest('.modal').remove();
 
-            const totalPosts = await this.api.getPostsCount(threadId);
-            const lastPage = Math.ceil(totalPosts / 20);
+            const totalPosts = 1; 
+            const lastPage = Math.ceil(totalPosts / 20);  // todo: get rid of magic number
             this.showThread(threadId, lastPage);
         } catch (error) {
             UIComponents.showError(error.message);
@@ -467,9 +548,8 @@ class ForumApp {
     }
 
     setupNotifications() {
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
-        }
+        // Only request notification permission when user explicitly wants it
+        // Remove automatic permission request to fix the warning
     }
 
     showNotification(title, body, icon = '/favicon.ico') {
@@ -478,11 +558,18 @@ class ForumApp {
         }
     }
 
+    requestNotificationPermission() {
+        // Call this only in response to user action
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+    }
+
     initializeEnhancements() {
         this.setupKeyboardShortcuts();
         this.setupAutoSave();
         this.loadTheme();
-        this.setupNotifications();
+        // Removed automatic notification setup
 
         setInterval(() => {
             if (this.api.token) {

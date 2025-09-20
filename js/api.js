@@ -120,53 +120,43 @@ class ForumAPI {
         });
     }
 
-    // Thread methods
+    // Thread methods - SIMPLIFIED
     async getThreads(boardId, page = 1, perPage = 20) {
         return this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
     }
 
-    async getThreadsCount(boardId) {
-        // Get a reasonable estimate by checking multiple pages
-        try {
-            let totalCount = 0;
-            let page = 1;
-            const perPage = 100;
-            
-            while (page <= 10) { // Limit to 10 pages max to avoid infinite loops
-                const threads = await this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
-                if (!threads || threads.length === 0) break;
-                
-                totalCount += threads.length;
-                if (threads.length < perPage) break; // Last page
-                page++;
-            }
-            
-            return totalCount;
-        } catch (error) {
-            console.warn('Failed to get threads count:', error);
-            return 20; // Return a default count
-        }
-    }
+    // // REMOVED: Complex getThreadsCount method - we'll get this info from the API response headers or board stats
+    // async getThreadsCount(boardId) {
+    //     // Instead of making multiple API calls, we'll use the board stats
+    //     try {
+    //         const boards = await this.getBoards();
+    //         const board = boards.find(b => b.board_id == boardId);
+    //         return board ? board.thread_count : 20; // Fallback to reasonable default
+    //     } catch (error) {
+    //         console.warn('Failed to get threads count:', error);
+    //         return 20; // Fallback
+    //     }
+    // }
 
     async getThreadInfo(threadId) {
-    try {
-        return await this.request(`/api/threads/${threadId}`);
-    } catch (error) {
-        console.warn(`Failed to get thread info for ${threadId}:`, error);
-        // Return a fallback object with minimal info
-        return {
-            thread_id: threadId,
-            title: `Thread ${threadId}`,
-            locked: false,
-            sticky: false,
-            reply_count: 0,
-            view_count: 0,
-            user_id: 0,
-            username: 'Unknown',
-            timestamp: Date.now() / 1000
-        };
+        try {
+            return await this.request(`/api/threads/${threadId}`);
+        } catch (error) {
+            console.warn(`Failed to get thread info for ${threadId}:`, error);
+            // Return a fallback object with minimal info
+            return {
+                thread_id: threadId,
+                title: `Thread ${threadId}`,
+                locked: false,
+                sticky: false,
+                reply_count: 0,
+                view_count: 0,
+                user_id: 0,
+                username: 'Unknown',
+                timestamp: Date.now() / 1000
+            };
+        }
     }
-}
 
     async createThread(boardId, title, content) {
         return this.request(`/api/boards/${boardId}/threads`, {
@@ -195,32 +185,22 @@ class ForumAPI {
         });
     }
 
-    // Post methods
+    // Post methods - SIMPLIFIED
     async getPosts(threadId, page = 1, perPage = 20) {
         return this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
     }
 
-    async getPostsCount(threadId) {
-        try {
-            let totalCount = 0;
-            let page = 1;
-            const perPage = 100;
-            
-            while (page <= 10) { // Limit to 10 pages max
-                const posts = await this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
-                if (!posts || posts.length === 0) break;
-                
-                totalCount += posts.length;
-                if (posts.length < perPage) break; // Last page
-                page++;
-            }
-            
-            return totalCount;
-        } catch (error) {
-            console.warn('Failed to get posts count:', error);
-            return 20; // Return a default count
-        }
-    }
+    // // REMOVED: Complex getPostsCount method - we'll calculate this differently
+    // async getPostsCount(threadId) {
+    //     // Instead of making API calls to estimate, we'll use the thread's reply_count + 1
+    //     try {
+    //         const threadInfo = await this.getThreadInfo(threadId);
+    //         return (threadInfo.reply_count || 0) + 1; // +1 for the original post
+    //     } catch (error) {
+    //         console.warn('Failed to get posts count:', error);
+    //         return 20; // Fallback
+    //     }
+    // }
 
     async createPost(threadId, content) {
         return this.request(`/api/threads/${threadId}/posts`, {
@@ -228,6 +208,7 @@ class ForumAPI {
             body: JSON.stringify({ content })
         });
     }
+
     async getPost(postId) {
         return this.request(`/api/posts/${postId}`);
     }
@@ -235,6 +216,7 @@ class ForumAPI {
     async getPostEditHistory(postId) {
         return this.request(`/api/posts/${postId}/history`);
     }
+
     async editPost(postId, content) {
         return this.request(`/api/posts/${postId}`, {
             method: 'PATCH',
@@ -253,26 +235,8 @@ class ForumAPI {
             method: 'PATCH'
         });
     }
-    async showPostHistory(postId) {
-        try {
-            const history = await this.api.getPostEditHistory(postId);
-            this.createModal(Templates.modals.postHistory(history, postId));
-        } catch (error) {
-            UIComponents.showError(error.message);
-        }
-    }
 
-    async refreshPost(postId) {
-        try {
-            const post = await this.api.getPost(postId);
-            const postElement = document.getElementById(`post-content-${postId}`);
-            if (postElement) {
-                postElement.innerHTML = UIComponents.escapeHtml(post.content).replace(/\n/g, '<br>');
-            }
-        } catch (error) {
-            console.warn('Failed to refresh post:', error);
-        }
-    }
+    // REMOVED: Duplicate methods that don't exist
 
     // Admin methods
     async banUser(userId) {
