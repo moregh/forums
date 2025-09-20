@@ -1755,3 +1755,54 @@ body {
     background: #2f4a32;
     border-left-color: #28a745;
 }
+.page-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.admin-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.error-state {
+    text-align: center;
+    padding: 3rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.error-state h3 {
+    color: #dc3545;
+    margin-bottom: 1rem;
+}
+
+.error-state button {
+    margin: 0.25rem;
+}
+
+.thread-meta {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-bottom: 0.5rem;
+}
+
+@media (max-width: 768px) {
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .page-actions {
+        flex-direction: column;
+        align-items: flex-start;
+        width: 100%;
+    }
+    
+    .admin-actions {
+        flex-wrap: wrap;
+    }
+}
