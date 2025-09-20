@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import time
 from typing import List
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -10,7 +9,57 @@ from database import DatabaseManager
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
 from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse
 from security import SecurityManager, RateLimiter
+from functools import wraps
+from datetime import datetime, timezone
 
+
+def timestamp() -> float:
+    return datetime.now(timezone.utc).timestamp()
+
+
+def audit_action(action_type: str, target_type: str = "user"):
+    """Decorator to automatically audit administrative actions"""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # Extract common parameters that should be in all admin endpoints
+            user_id = kwargs.get('user_id')
+            request = kwargs.get('request') 
+            current_user = kwargs.get('current_user')
+            
+            if not all([user_id, request, current_user]):
+                # If we can't audit, just run the function
+                return await func(*args, **kwargs)
+            
+            client_ip = await get_client_ip(request)
+            user_agent = request.headers.get("user-agent", "")
+            
+            try:
+                # Execute the original function
+                result = await func(*args, **kwargs)
+                
+                # Log successful action
+                db.execute_insert("""
+                    INSERT INTO security_audit_log (user_id, event_type, ip_address, user_agent, event_data, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (user_id, action_type, client_ip, user_agent,
+                      f'{{"moderator_id": {current_user["user_id"]}, "target_type": "{target_type}", "action": "{action_type}"}}',
+                      timestamp()))
+                
+                return result
+                
+            except Exception as e:
+                # Log failed action
+                db.execute_insert("""
+                    INSERT INTO security_audit_log (user_id, event_type, ip_address, user_agent, event_data, timestamp)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (user_id, f"{action_type}_failed", client_ip, user_agent,
+                      f'{{"moderator_id": {current_user["user_id"]}, "error": "{str(e)}", "action": "{action_type}"}}',
+                      timestamp()))
+                raise
+                
+        return wrapper
+    return decorator
 
 # =============================================================================
 # API ENDPOINTS
@@ -129,7 +178,7 @@ async def register(user_data: UserRegister, request: Request):
     
     # Create user
     password_hash, password_salt = security_manager.hash_password(user_data.password)
-    current_time = time.time()
+    current_time = timestamp()
     
     user_id = db.execute_insert("""
         INSERT INTO users (username, email, password_hash, password_salt, 
@@ -195,7 +244,7 @@ async def login(login_data: UserLogin, request: Request):
         )
     
     # Check if account is locked
-    if user["locked_until"] and user["locked_until"] > time.time():
+    if user["locked_until"] and user["locked_until"] > timestamp():
         raise HTTPException(
             status_code=status.HTTP_423_LOCKED,
             detail="Account temporarily locked"
@@ -217,7 +266,7 @@ async def login(login_data: UserLogin, request: Request):
             last_login_at = ?,
             last_login_ip = ?
         WHERE user_id = ?
-    """, (time.time(), time.time(), client_ip, user["user_id"]))
+    """, (timestamp(), timestamp(), client_ip, user["user_id"]))
     
     # Create access token
     access_token = security_manager.create_access_token({"sub": str(user["user_id"])})
@@ -313,7 +362,7 @@ async def edit_post(
             detail="Thread or board not found"
         )
     
-    current_time = time.time()
+    current_time = timestamp()
     
     # Store the old content for edit history
     db.execute_insert("""
@@ -365,6 +414,7 @@ async def get_thread(thread_id: int):
     return ThreadResponse(**thread_dict)
 
 @app.delete("/api/posts/{post_id}")
+@audit_action("post_delete")
 async def delete_post(
     post_id: int,
     current_user: dict = Depends(get_current_user)
@@ -405,21 +455,7 @@ async def delete_post(
         (post_id,)
     )
     
-    # Log the moderation action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'post', ?, 'delete', ?)
-    """, (current_user["user_id"], post_id, time.time()))
-    
     return {"message": "Post deleted successfully"}
-# Missing Forum API Endpoints
-# Add these to your app.py file
-
-from typing import List, Optional
-import time
-from fastapi import HTTPException, status, Request, Depends
-from models import UserResponse, ErrorResponse
-
 # =============================================================================
 # USER MANAGEMENT ENDPOINTS
 # =============================================================================
@@ -616,6 +652,7 @@ async def get_all_users(
     return [dict(user) for user in users]
 
 @app.post("/api/admin/users/{user_id}/ban")
+@audit_action("user_banned")
 async def ban_user(
     user_id: int,
     ban_data: dict,
@@ -646,17 +683,11 @@ async def ban_user(
         "UPDATE users SET is_banned = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         (user_id,)
     )
-    
-    # Log the action
-    reason = ban_data.get("reason", "No reason provided")
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, reason, timestamp)
-        VALUES (?, 'user', ?, 'ban', ?, ?)
-    """, (current_user["user_id"], user_id, reason, time.time()))
-    
+
     return {"message": "User banned successfully"}
 
 @app.post("/api/admin/users/{user_id}/unban")
+@audit_action("user_unbanned") 
 async def unban_user(
     user_id: int,
     current_user: dict = Depends(require_admin)
@@ -681,15 +712,10 @@ async def unban_user(
         (user_id,)
     )
     
-    # Log the action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'user', ?, 'unban', ?)
-    """, (current_user["user_id"], user_id, time.time()))
-    
     return {"message": "User unbanned successfully"}
 
 @app.post("/api/admin/users/{user_id}/promote")
+@audit_action("admin_granted")
 async def make_user_admin(
     user_id: int,
     current_user: dict = Depends(require_admin)
@@ -720,15 +746,10 @@ async def make_user_admin(
         (user_id,)
     )
     
-    # Log the action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'user', ?, 'promote_admin', ?)
-    """, (current_user["user_id"], user_id, time.time()))
-    
     return {"message": "User promoted to admin successfully"}
 
 @app.post("/api/admin/users/{user_id}/demote")
+@audit_action("admin_revoked")
 async def remove_user_admin(
     user_id: int,
     current_user: dict = Depends(require_admin)
@@ -765,12 +786,6 @@ async def remove_user_admin(
         "UPDATE users SET is_admin = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
         (user_id,)
     )
-    
-    # Log the action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'user', ?, 'demote_admin', ?)
-    """, (current_user["user_id"], user_id, time.time()))
     
     return {"message": "Admin privileges removed successfully"}
 
@@ -817,7 +832,7 @@ async def toggle_thread_lock(
     db.execute_insert("""
         INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
         VALUES (?, 'thread', ?, ?, ?)
-    """, (current_user["user_id"], thread_id, action, time.time()))
+    """, (current_user["user_id"], thread_id, action, timestamp()))
     
     return {"message": f"Thread {'locked' if locked else 'unlocked'} successfully"}
 
@@ -860,11 +875,12 @@ async def toggle_thread_sticky(
     db.execute_insert("""
         INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
         VALUES (?, 'thread', ?, ?, ?)
-    """, (current_user["user_id"], thread_id, action, time.time()))
+    """, (current_user["user_id"], thread_id, action, timestamp()))
     
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
 @app.delete("/api/threads/{thread_id}")
+@audit_action("thread_delete")
 async def delete_thread(
     thread_id: int,
     current_user: dict = Depends(get_current_user)
@@ -895,12 +911,6 @@ async def delete_thread(
         "UPDATE threads SET deleted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
         (thread_id,)
     )
-    
-    # Log the action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'thread', ?, 'delete', ?)
-    """, (current_user["user_id"], thread_id, time.time()))
     
     return {"message": "Thread deleted successfully"}
 
@@ -1005,13 +1015,13 @@ async def get_forum_statistics():
         SELECT COUNT(DISTINCT user_id) as count 
         FROM user_sessions 
         WHERE is_active = TRUE AND last_activity > ?
-    """, (time.time() - 900,), fetch_one=True)["count"]  # Active in last 15 minutes
+    """, (timestamp() - 900,), fetch_one=True)["count"]  # Active in last 15 minutes
     
     stats["posts_today"] = db.execute_query("""
         SELECT COUNT(*) as count 
         FROM posts 
         WHERE timestamp > ? AND deleted = FALSE
-    """, (time.time() - 86400,), fetch_one=True)["count"]
+    """, (timestamp() - 86400,), fetch_one=True)["count"]
     
     # Top contributors
     top_posters = db.execute_query("""
@@ -1024,7 +1034,9 @@ async def get_forum_statistics():
     stats["top_posters"] = [dict(poster) for poster in top_posters]
     
     return stats
+
 @app.patch("/api/posts/{post_id}/restore")
+@audit_action("post_restore")
 async def restore_post(
     post_id: int,
     current_user: dict = Depends(require_admin)
@@ -1057,12 +1069,6 @@ async def restore_post(
         "UPDATE posts SET deleted = FALSE WHERE post_id = ?",
         (post_id,)
     )
-    
-    # Log the moderation action
-    db.execute_insert("""
-        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
-        VALUES (?, 'post', ?, 'restore', ?)
-    """, (current_user["user_id"], post_id, time.time()))
     
     return {"message": "Post restored successfully"}
 
@@ -1116,6 +1122,7 @@ async def get_boards():
     return [BoardResponse(**dict(board)) for board in boards]
 
 @app.post("/api/boards", response_model=BoardResponse)
+@audit_action("board_create")
 async def create_board(
     board_data: BoardCreate,
     current_user: dict = Depends(require_admin)
@@ -1204,7 +1211,7 @@ async def create_thread(
             detail="Board not found"
         )
     
-    current_time = time.time()
+    current_time = timestamp()
     
     # Create thread
     thread_id = db.execute_insert("""
@@ -1301,7 +1308,7 @@ async def create_post(
             detail="Board not found"
         )
     
-    current_time = time.time()
+    current_time = timestamp()
     
     # Create post
     post_id = db.execute_insert("""
@@ -1350,7 +1357,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "timestamp": time.time()}
+    return {"status": "healthy", "timestamp": timestamp()}
 
 if __name__ == "__main__":
     import uvicorn
