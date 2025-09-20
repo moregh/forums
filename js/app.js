@@ -3,10 +3,11 @@ class ForumApp {
         this.api = new ForumAPI();
         this.state = new ForumState();
         this.router = new Router();
-        this.navigationLock = false; // Add this property
+        this.navigationLock = false; 
+        this.tempThreadData = null;
         this.setupRoutes();
         this.setupEventListeners();
-        this.setupEventDelegation(); // Add this line
+        this.setupEventDelegation(); 
         this.init();
     }
 
@@ -17,8 +18,9 @@ class ForumApp {
         this.router.register('/admin', () => this.showAdmin());
         this.router.register('/boards/:id', (params) => this.showBoard(params.id));
         this.router.register('/threads/:id', (params) => {
-            // Don't pass threadData from URL - let it fetch fresh data
-            this.showThread(params.id, 1);
+            const threadData = this.tempThreadData;
+            this.tempThreadData = null;
+            this.showThread(params.id, 1, threadData);
         });
     }
 
@@ -80,7 +82,6 @@ class ForumApp {
         document.getElementById('content').innerHTML = Templates.register();
     }
 async navigateToThread(threadId, threadData = null) {
-    // Prevent multiple rapid navigations
     if (this.navigationLock) {
         console.log('Navigation locked, ignoring click');
         return;
@@ -90,14 +91,20 @@ async navigateToThread(threadId, threadData = null) {
     
     try {
         console.log('Navigating to thread:', threadId, threadData);
+        
+        // Store threadData temporarily if provided
+        if (threadData) {
+            this.tempThreadData = threadData;
+        }
+        
+        // Only use router navigation - don't call showThread directly
         this.router.navigate(`/threads/${threadId}`, true);
-        await this.showThread(threadId, 1, threadData);
+        
     } catch (error) {
         UIComponents.showError(`Navigation error: ${error}`);
         console.error('Navigation error:', error);
         this.state.setState({ error: error.message });
     } finally {
-        // Clear lock after a short delay to prevent rapid clicks
         setTimeout(() => {
             this.navigationLock = false;
         }, 50);
