@@ -125,49 +125,49 @@ class UIComponents {
     }
 
     static renderThreads(threads, currentUser) {
-        if (!threads || threads.length === 0) {
-            return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
-        }
-        
-        return threads.map(thread => `
-            <div class="thread-row ${thread.sticky ? 'sticky' : ''}" 
-                 onclick="forum.router.navigate('/threads/${thread.thread_id}')">
-                <div class="thread-info">
-                    <h4>${this.escapeHtml(thread.title)}</h4>
-                    <span class="thread-meta">
-                        by ${this.escapeHtml(thread.username)} • 
-                        ${this.formatDate(thread.timestamp)}
-                        ${thread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
-                        ${thread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
-                    </span>
-                    ${this.canModerateThread(currentUser) ? `
-                        <div class="thread-actions" onclick="event.stopPropagation()">
-                            <button onclick="forum.toggleThreadSticky(${thread.thread_id}, ${!thread.sticky})" 
-                                    class="btn-small ${thread.sticky ? 'btn-warning' : 'btn-secondary'}">
-                                ${thread.sticky ? 'Unsticky' : 'Sticky'}
-                            </button>
-                            <button onclick="forum.toggleThreadLock(${thread.thread_id}, ${!thread.locked})" 
-                                    class="btn-small ${thread.locked ? 'btn-success' : 'btn-warning'}">
-                                ${thread.locked ? 'Unlock' : 'Lock'}
-                            </button>
-                            <button onclick="forum.deleteThread(${thread.thread_id})" 
-                                    class="btn-small btn-danger">Delete</button>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="thread-stats">
-                    <span>${thread.reply_count} replies</span>
-                    <span>${thread.view_count} views</span>
-                    ${thread.last_post_username ? `
-                        <div class="last-post">
-                            Last: ${this.escapeHtml(thread.last_post_username)}<br>
-                            ${this.formatDate(thread.last_post_at)}
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
+    if (!threads || threads.length === 0) {
+        return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
     }
+    
+    return threads.map(thread => `
+        <div class="thread-row ${thread.sticky ? 'sticky' : ''}" 
+             onclick="forum.showThread(${thread.thread_id}); forum.router.navigate('/threads/${thread.thread_id}', false);">
+            <div class="thread-info">
+                <h4>${this.escapeHtml(thread.title)}</h4>
+                <span class="thread-meta">
+                    by ${this.escapeHtml(thread.username)} • 
+                    ${this.formatDate(thread.timestamp)}
+                    ${thread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
+                    ${thread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
+                </span>
+                ${this.canModerateThread(currentUser) ? `
+                    <div class="thread-actions" onclick="event.stopPropagation()">
+                        <button onclick="forum.toggleThreadSticky(${thread.thread_id}, ${!thread.sticky})" 
+                                class="btn-small ${thread.sticky ? 'btn-warning' : 'btn-secondary'}">
+                            ${thread.sticky ? 'Unsticky' : 'Sticky'}
+                        </button>
+                        <button onclick="forum.toggleThreadLock(${thread.thread_id}, ${!thread.locked})" 
+                                class="btn-small ${thread.locked ? 'btn-success' : 'btn-warning'}">
+                            ${thread.locked ? 'Unlock' : 'Lock'}
+                        </button>
+                        <button onclick="forum.deleteThread(${thread.thread_id})" 
+                                class="btn-small btn-danger">Delete</button>
+                    </div>
+                ` : ''}
+            </div>
+            <div class="thread-stats">
+                <span>${thread.reply_count || 0} replies</span>
+                <span>${thread.view_count || 0} views</span>
+                ${thread.last_post_username ? `
+                    <div class="last-post">
+                        Last: ${this.escapeHtml(thread.last_post_username)}<br>
+                        ${this.formatDate(thread.last_post_at)}
+                    </div>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+}
 
     static renderPosts(posts, currentUser) {
         if (!posts || posts.length === 0) {

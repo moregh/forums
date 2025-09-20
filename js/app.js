@@ -14,7 +14,7 @@ class ForumApp {
         this.router.register('/register', () => this.showRegister());
         this.router.register('/admin', () => this.showAdmin());
         this.router.register('/boards/:id', (params) => this.showBoard(params.id));
-        this.router.register('/threads/:id', (params) => this.showThread(params.id));
+        this.router.register('/threads/:id', (params) => this.showThread(params.id, 1, params.threadData));
     }
 
     setupEventListeners() {
@@ -115,30 +115,34 @@ class ForumApp {
         }
     }
 
-    async showThread(threadId, page = 1) {
-        try {
-            this.state.setState({ loading: true, error: null });
-            const posts = await this.api.getPosts(threadId, page);
-            const user = this.state.getState().user;
+    async showThread(threadId, page = 1, threadData = null) {
+    try {
+        this.state.setState({ loading: true, error: null });
+        const posts = await this.api.getPosts(threadId, page);
+        const user = this.state.getState().user;
 
-            const totalPosts = await this.api.getPostsCount(threadId);
-            const totalPages = Math.ceil(totalPosts / 20);
-            const threadInfo = await this.api.getThreadInfo(threadId);
+        const totalPosts = await this.api.getPostsCount(threadId);
+        const totalPages = Math.ceil(totalPosts / 20);
+        
+        // Use provided thread data, or try to get from current state, or fetch from API
+        let threadInfo = threadData || 
+                        this.state.getState().threads?.find(t => t.thread_id == threadId) ||
+                        await this.api.getThreadInfo(threadId);
 
-            document.getElementById('content').innerHTML =
-                Templates.thread(threadInfo, posts, user, page, totalPages);
+        document.getElementById('content').innerHTML =
+            Templates.thread(threadInfo, posts, user, page, totalPages);
 
-            this.state.setState({ 
-                currentThread: { thread_id: threadId, ...threadInfo }, 
-                posts, 
-                currentPage: page,
-                totalPages,
-                loading: false 
-            });
-        } catch (error) {
-            this.state.setState({ error: error.message, loading: false });
-        }
+        this.state.setState({ 
+            currentThread: { thread_id: threadId, ...threadInfo }, 
+            posts, 
+            currentPage: page,
+            totalPages,
+            loading: false 
+        });
+    } catch (error) {
+        this.state.setState({ error: error.message, loading: false });
     }
+}
 
     // Event handlers
     async handleLogin(event) {

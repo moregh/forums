@@ -342,6 +342,28 @@ async def edit_post(
     
     return PostResponse(**dict(updated_post))
 
+@app.get("/api/threads/{thread_id}", response_model=ThreadResponse)
+async def get_thread(thread_id: int):
+    """Get a specific thread by ID"""
+    thread = db.execute_query("""
+        SELECT * FROM active_threads 
+        WHERE thread_id = ?
+    """, (thread_id,), fetch_one=True)
+    
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread not found"
+        )
+    
+    # Map the view fields to the expected model fields
+    thread_dict = dict(thread)
+    thread_dict['user_id'] = thread_dict['author_id']
+    thread_dict['username'] = thread_dict['author_name'] 
+    thread_dict['timestamp'] = thread_dict['created_at']
+    
+    return ThreadResponse(**thread_dict)
+
 @app.delete("/api/posts/{post_id}")
 async def delete_post(
     post_id: int,

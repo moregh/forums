@@ -149,19 +149,24 @@ class ForumAPI {
     }
 
     async getThreadInfo(threadId) {
-        try {
-            return await this.request(`/api/threads/${threadId}`);
-        } catch (error) {
-            console.warn(`Failed to get thread info for ${threadId}:`, error);
-            // Return a fallback object
-            return {
-                thread_id: threadId,
-                title: `Thread ${threadId}`,
-                locked: false,
-                sticky: false
-            };
-        }
+    try {
+        return await this.request(`/api/threads/${threadId}`);
+    } catch (error) {
+        console.warn(`Failed to get thread info for ${threadId}:`, error);
+        // Return a fallback object with minimal info
+        return {
+            thread_id: threadId,
+            title: `Thread ${threadId}`,
+            locked: false,
+            sticky: false,
+            reply_count: 0,
+            view_count: 0,
+            user_id: 0,
+            username: 'Unknown',
+            timestamp: Date.now() / 1000
+        };
     }
+}
 
     async createThread(boardId, title, content) {
         return this.request(`/api/boards/${boardId}/threads`, {
