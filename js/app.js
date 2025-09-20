@@ -3,8 +3,10 @@ class ForumApp {
         this.api = new ForumAPI();
         this.state = new ForumState();
         this.router = new Router();
+        this.navigationLock = false; // Add this property
         this.setupRoutes();
         this.setupEventListeners();
+        this.setupEventDelegation(); // Add this line
         this.init();
     }
 
@@ -77,34 +79,29 @@ class ForumApp {
     showRegister() {
         document.getElementById('content').innerHTML = Templates.register();
     }
-    // Add this method to ForumApp class
 async navigateToThread(threadId, threadData = null) {
     // Prevent multiple rapid navigations
-    if (this.isNavigating) return;
-    this.isNavigating = true;
+    if (this.navigationLock) {
+        console.log('Navigation locked, ignoring click');
+        return;
+    }
+    
+    this.navigationLock = true;
     
     try {
+        console.log('Navigating to thread:', threadId, threadData);
         this.router.navigate(`/threads/${threadId}`, true);
         await this.showThread(threadId, 1, threadData);
+    } catch (error) {
+        console.error('Navigation error:', error);
+        this.state.setState({ error: error.message });
     } finally {
-        this.isNavigating = false;
+        // Clear lock after a short delay to prevent rapid clicks
+        setTimeout(() => {
+            this.navigationLock = false;
+        }, 50);
     }
 }
-
-    async showAdmin() {
-        const currentUser = this.state.getState().user;
-        if (!currentUser || !currentUser.is_admin) {
-            this.router.navigate('/');
-            return;
-        }
-        try {
-            this.state.setState({ loading: true, error: null });
-            document.getElementById('content').innerHTML = Templates.admin();
-            this.state.setState({ loading: false });
-        } catch (error) {
-            this.state.setState({ error: error.message, loading: false });
-        }
-    }
 
     async showBoard(boardId, page = 1) {
         try {
@@ -241,7 +238,32 @@ async showThread(threadId, page = 1, threadData = null) {
         });
     }
 }
-
+    setupEventDelegation() {
+    // Handle thread clicks with event delegation
+    document.addEventListener('click', (e) => {
+        const threadRow = e.target.closest('.thread-row[data-thread-id]');
+        if (threadRow && !e.target.closest('.thread-actions')) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const threadId = threadRow.dataset.threadId;
+            const threadData = threadRow.dataset.threadData;
+            
+            if (threadId) {
+                let parsedData = null;
+                try {
+                    if (threadData) {
+                        parsedData = JSON.parse(threadData);
+                    }
+                } catch (err) {
+                    console.warn('Failed to parse thread data:', err);
+                }
+                
+                this.navigateToThread(parseInt(threadId), parsedData);
+            }
+        }
+    });
+}
     // Event handlers
     async handleLogin(event) {
         event.preventDefault();
@@ -407,6 +429,137 @@ async showThread(threadId, page = 1, threadData = null) {
             UIComponents.showError(error.message);
         }
     }
+    async showAdmin() {
+    const currentUser = this.state.getState().user;
+    if (!currentUser || !currentUser.is_admin) {
+        this.router.navigate('/');
+        return;
+    }
+    
+    try {
+        this.state.setState({ loading: true, error: null });
+        
+        // Fetch admin data - users, stats, moderation log
+        const [users, stats, moderationLog] = await Promise.all([
+            this.api.request('/api/admin/users?page=1&per_page=50').catch(() => []),
+            this.api.request('/api/stats').catch(() => ({})),
+            this.api.request('/api/admin/moderation-log?page=1&per_page=20').catch(() => [])
+        ]);
+        
+        const content = document.getElementById('content');
+        content.innerHTML = `
+            <div class="page-header">
+                <h1>Admin Panel</h1>
+            </div>
+            
+            <div class="admin-content">
+                <div class="admin-section">
+                    <h2>Forum Statistics</h2>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3>${stats.total_users || 0}</h3>
+                            <p>Total Users</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${stats.total_threads || 0}</h3>
+                            <p>Total Threads</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${stats.total_posts || 0}</h3>
+                            <p>Total Posts</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3>${stats.users_online || 0}</h3>
+                            <p>Users Online</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="admin-section">
+                    <h2>User Management</h2>
+                    <div class="user-management">
+                        ${this.renderUserList(users)}
+                    </div>
+                </div>
+                
+                <div class="admin-section">
+                    <h2>Recent Moderation Actions</h2>
+                    <div class="moderation-log">
+                        ${this.renderModerationLog(moderationLog)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        this.state.setState({ loading: false });
+        
+    } catch (error) {
+        console.error('Error loading admin panel:', error);
+        this.state.setState({ error: error.message, loading: false });
+    }
+}
+
+renderUserList(users) {
+    if (!Array.isArray(users) || users.length === 0) {
+        return '<p>No users found.</p>';
+    }
+    
+    return `
+        <div class="user-list">
+            ${users.map(user => `
+                <div class="admin-user-row" data-user-id="${user.user_id}">
+                    <div class="user-info">
+                        <strong>${UIComponents.escapeHtml(user.username)}</strong>
+                        <span class="user-email">${UIComponents.escapeHtml(user.email)}</span>
+                        ${user.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
+                        ${user.is_banned ? '<span class="banned-badge">Banned</span>' : ''}
+                        <div class="user-stats">
+                            Joined: ${UIComponents.formatDate(user.join_date)} | 
+                            Posts: ${user.post_count || 0} | 
+                            Last seen: ${UIComponents.formatDate(user.last_activity)}
+                        </div>
+                    </div>
+                    <div class="user-actions">
+                        ${!user.is_banned ? `
+                            <button onclick="forum.banUser(${user.user_id})" class="btn-small btn-danger">Ban</button>
+                        ` : `
+                            <button onclick="forum.unbanUser(${user.user_id})" class="btn-small btn-success">Unban</button>
+                        `}
+                        ${!user.is_admin ? `
+                            <button onclick="forum.makeUserAdmin(${user.user_id})" class="btn-small btn-warning">Make Admin</button>
+                        ` : `
+                            <button onclick="forum.removeUserAdmin(${user.user_id})" class="btn-small btn-secondary">Remove Admin</button>
+                        `}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+renderModerationLog(logs) {
+    if (!Array.isArray(logs) || logs.length === 0) {
+        return '<p>No recent moderation actions.</p>';
+    }
+    
+    return `
+        <div class="moderation-entries">
+            ${logs.map(log => `
+                <div class="moderation-entry">
+                    <div class="mod-header">
+                        <strong>${UIComponents.escapeHtml(log.moderator_name || 'Unknown')}</strong>
+                        <span class="action-type">${log.action}</span>
+                        <span class="mod-date">${UIComponents.formatDate(log.timestamp)}</span>
+                    </div>
+                    <div class="mod-details">
+                        Target: ${log.target_type} #${log.target_id}
+                        ${log.reason ? `<br>Reason: ${UIComponents.escapeHtml(log.reason)}` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
 
     // Modal forms
     showCreateBoardForm() {

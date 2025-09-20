@@ -105,70 +105,68 @@ class UIComponents {
         return pagination;
     }
 
+    // In renderThreads function, replace the onclick with data attributes:
     static renderThreads(threads, currentUser) {
-    if (!threads || threads.length === 0) {
-        return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
+        if (!threads || threads.length === 0) {
+            return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
+        }
+        
+        return threads.map(thread => {
+            const safeThread = {
+                thread_id: thread.thread_id,
+                title: thread.title || 'Untitled Thread',
+                username: thread.username || thread.author_name || 'Unknown',
+                timestamp: thread.timestamp || thread.created_at || 0,
+                sticky: Boolean(thread.sticky),
+                locked: Boolean(thread.locked),
+                reply_count: thread.reply_count || 0,
+                view_count: thread.view_count || 0,
+                last_post_username: thread.last_post_username || null,
+                last_post_at: thread.last_post_at || null,
+                user_id: thread.user_id || thread.author_id || 0
+            };
+            
+            return `
+                <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
+                    data-thread-id="${safeThread.thread_id}"
+                    data-thread-data="${UIComponents.escapeHtml(JSON.stringify(safeThread))}">
+                    <div class="thread-info">
+                        <h4>${UIComponents.escapeHtml(safeThread.title)}</h4>
+                        <span class="thread-meta">
+                            by ${UIComponents.escapeHtml(safeThread.username)} • 
+                            ${UIComponents.formatDate(safeThread.timestamp)}
+                            ${safeThread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
+                            ${safeThread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
+                        </span>
+                        ${UIComponents.canModerateThread(currentUser) ? `
+                            <div class="thread-actions">
+                                <button onclick="event.stopPropagation(); forum.toggleThreadSticky(${safeThread.thread_id}, ${!safeThread.sticky})" 
+                                        class="btn-small ${safeThread.sticky ? 'btn-warning' : 'btn-secondary'}">
+                                    ${safeThread.sticky ? 'Unsticky' : 'Sticky'}
+                                </button>
+                                <button onclick="event.stopPropagation(); forum.toggleThreadLock(${safeThread.thread_id}, ${!safeThread.locked})" 
+                                        class="btn-small ${safeThread.locked ? 'btn-success' : 'btn-warning'}">
+                                    ${safeThread.locked ? 'Unlock' : 'Lock'}
+                                </button>
+                                <button onclick="event.stopPropagation(); forum.deleteThread(${safeThread.thread_id})" 
+                                        class="btn-small btn-danger">Delete</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="thread-stats">
+                        <span>${safeThread.reply_count} replies</span>
+                        <span>${safeThread.view_count} views</span>
+                        ${safeThread.last_post_username ? `
+                            <div class="last-post">
+                                Last: ${UIComponents.escapeHtml(safeThread.last_post_username)}<br>
+                                ${UIComponents.formatDate(safeThread.last_post_at)}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
     }
-    
-    return threads.map(thread => {
-        // Handle both API response formats consistently
-        const safeThread = {
-            thread_id: thread.thread_id,
-            title: thread.title || 'Untitled Thread',
-            username: thread.username || thread.author_name || 'Unknown',
-            timestamp: thread.timestamp || thread.created_at || 0,
-            sticky: Boolean(thread.sticky),
-            locked: Boolean(thread.locked),
-            reply_count: thread.reply_count || 0,
-            view_count: thread.view_count || 0,
-            last_post_username: thread.last_post_username || null,
-            last_post_at: thread.last_post_at || null,
-            user_id: thread.user_id || thread.author_id || 0
-        };
-        
-        // Encode thread data for safe passing
-        const encodedThreadData = encodeURIComponent(JSON.stringify(safeThread));
-        
-        return `
-            <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
-                 onclick="forum.navigateToThread(${safeThread.thread_id}, JSON.parse(decodeURIComponent('${encodedThreadData}')));">
-                <div class="thread-info">
-                    <h4>${this.escapeHtml(safeThread.title)}</h4>
-                    <span class="thread-meta">
-                        by ${this.escapeHtml(safeThread.username)} • 
-                        ${this.formatDate(safeThread.timestamp)}
-                        ${safeThread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
-                        ${safeThread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
-                    </span>
-                    ${this.canModerateThread(currentUser) ? `
-                        <div class="thread-actions" onclick="event.stopPropagation()">
-                            <button onclick="forum.toggleThreadSticky(${safeThread.thread_id}, ${!safeThread.sticky})" 
-                                    class="btn-small ${safeThread.sticky ? 'btn-warning' : 'btn-secondary'}">
-                                ${safeThread.sticky ? 'Unsticky' : 'Sticky'}
-                            </button>
-                            <button onclick="forum.toggleThreadLock(${safeThread.thread_id}, ${!safeThread.locked})" 
-                                    class="btn-small ${safeThread.locked ? 'btn-success' : 'btn-warning'}">
-                                ${safeThread.locked ? 'Unlock' : 'Lock'}
-                            </button>
-                            <button onclick="forum.deleteThread(${safeThread.thread_id})" 
-                                    class="btn-small btn-danger">Delete</button>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="thread-stats">
-                    <span>${safeThread.reply_count} replies</span>
-                    <span>${safeThread.view_count} views</span>
-                    ${safeThread.last_post_username ? `
-                        <div class="last-post">
-                            Last: ${this.escapeHtml(safeThread.last_post_username)}<br>
-                            ${this.formatDate(safeThread.last_post_at)}
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `;
-    }).join('');
-}
     static renderBoards(boards) {
     if (!boards || boards.length === 0) {
         return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
