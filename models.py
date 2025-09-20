@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, validator
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 
 class UserRegister(BaseModel):
@@ -117,3 +117,27 @@ class ErrorResponse(BaseModel):
     error: str
     message: str
     details: Optional[Dict[str, Any]] = None
+
+class PostEdit(BaseModel):
+    content: str
+    
+    @validator('content')
+    def validate_content(cls, v):
+        if len(v) < 1 or len(v) > 50000:
+            raise ValueError('Content must be 1-50000 characters')
+        return v
+
+class PostEditHistory(BaseModel):
+    edit_id: int
+    post_id: int
+    editor_id: int
+    editor_name: str
+    old_content: str
+    new_content: str
+    edit_reason: Optional[str]
+    edit_type: str
+    timestamp: float
+
+class PostDetailResponse(PostResponse):
+    """Extended post response with edit history"""
+    edit_history: Optional[List[PostEditHistory]] = None

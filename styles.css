@@ -1688,3 +1688,70 @@ body {
 * {
     transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
+/* Post history styles */
+.post-history {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.history-item {
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    padding: 1rem;
+    background: #f8f9fa;
+}
+
+.history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.history-date {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.history-content h4 {
+    font-size: 0.9rem;
+    color: #495057;
+    margin: 0.5rem 0 0.25rem 0;
+}
+
+.history-old-content,
+.history-new-content {
+    padding: 0.5rem;
+    border-radius: 4px;
+    font-family: inherit;
+    line-height: 1.4;
+    margin-bottom: 0.5rem;
+}
+
+.history-old-content {
+    background: #f8d7da;
+    border-left: 3px solid #dc3545;
+}
+
+.history-new-content {
+    background: #d4edda;
+    border-left: 3px solid #28a745;
+}
+
+.theme-dark .history-item {
+    background: #3d3d3d;
+    border-color: #404040;
+}
+
+.theme-dark .history-old-content {
+    background: #4a2f32;
+    border-left-color: #dc3545;
+}
+
+.theme-dark .history-new-content {
+    background: #2f4a32;
+    border-left-color: #28a745;
+}

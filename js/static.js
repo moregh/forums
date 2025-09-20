@@ -124,6 +124,27 @@ const Templates = {
                 <textarea name="content" rows="6" required>${UIComponents.escapeHtml(post.content)}</textarea>
                 <button type="submit">Update Post</button>
             </form>
+        `,
+        postHistory: (history, postId) => `
+            <h3>Post Edit History</h3>
+            <div class="post-history">
+                ${history.length === 0 ? '<p>No edit history available.</p>' : 
+                    history.map(edit => `
+                        <div class="history-item">
+                            <div class="history-header">
+                                <strong>Edited by ${UIComponents.escapeHtml(edit.editor_name)}</strong>
+                                <span class="history-date">${UIComponents.formatDate(edit.timestamp)}</span>
+                            </div>
+                            <div class="history-content">
+                                <h4>Previous content:</h4>
+                                <div class="history-old-content">${UIComponents.escapeHtml(edit.old_content).replace(/\n/g, '<br>')}</div>
+                                <h4>Updated to:</h4>
+                                <div class="history-new-content">${UIComponents.escapeHtml(edit.new_content).replace(/\n/g, '<br>')}</div>
+                            </div>
+                        </div>
+                    `).join('')
+                }
+            </div>
         `
     }
 };

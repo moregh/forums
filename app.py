@@ -238,7 +238,240 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
         expires_in=security_manager.access_token_expire_minutes * 60,
         user=UserResponse(**current_user)
     )
+# =============================================================================
+# POST EDIT/UPDATE ENDPOINTS
+# =============================================================================
 
+@app.get("/api/posts/{post_id}", response_model=PostResponse)
+async def get_post(post_id: int):
+    """Get a specific post by ID"""
+    post = db.execute_query("""
+        SELECT p.*, u.username 
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        WHERE p.post_id = ? AND p.deleted = FALSE
+    """, (post_id,), fetch_one=True)
+    
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+    
+    return PostResponse(**dict(post))
+
+@app.patch("/api/posts/{post_id}", response_model=PostResponse)
+async def edit_post(
+    post_id: int,
+    post_data: PostCreate,
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    """Edit a specific post"""
+    client_ip = await get_client_ip(request)
+    
+    # Rate limiting
+    if not rate_limiter.check_rate_limit(str(current_user["user_id"]), "edit", 30, 60):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many edit attempts"
+        )
+    
+    # Get the post
+    post = db.execute_query("""
+        SELECT p.*, t.locked, t.deleted as thread_deleted, b.deleted as board_deleted
+        FROM posts p
+        JOIN threads t ON p.thread_id = t.thread_id
+        JOIN boards b ON t.board_id = b.board_id
+        WHERE p.post_id = ? AND p.deleted = FALSE
+    """, (post_id,), fetch_one=True)
+    
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+    
+    # Check permissions - user can edit their own posts, admins can edit any
+    if post["user_id"] != current_user["user_id"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to edit this post"
+        )
+    
+    # Check if thread is locked (only admins can edit in locked threads)
+    if post["locked"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot edit posts in locked thread"
+        )
+    
+    # Check if thread/board is deleted
+    if post["thread_deleted"] or post["board_deleted"]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread or board not found"
+        )
+    
+    current_time = time.time()
+    
+    # Store the old content for edit history
+    db.execute_insert("""
+        INSERT INTO post_edits (post_id, editor_id, old_content, new_content, timestamp)
+        VALUES (?, ?, ?, ?, ?)
+    """, (post_id, current_user["user_id"], post["content"], post_data.content, current_time))
+    
+    # Update the post
+    db.execute_query("""
+        UPDATE posts 
+        SET content = ?, 
+            edited = TRUE, 
+            edit_count = edit_count + 1,
+            edited_at = ?,
+            edited_by = ?
+        WHERE post_id = ?
+    """, (post_data.content, current_time, current_user["user_id"], post_id))
+    
+    # Get updated post
+    updated_post = db.execute_query("""
+        SELECT p.*, u.username 
+        FROM posts p
+        JOIN users u ON p.user_id = u.user_id
+        WHERE p.post_id = ?
+    """, (post_id,), fetch_one=True)
+    
+    return PostResponse(**dict(updated_post))
+
+@app.delete("/api/posts/{post_id}")
+async def delete_post(
+    post_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a specific post"""
+    # Get the post
+    post = db.execute_query("""
+        SELECT p.*, t.locked, t.deleted as thread_deleted, b.deleted as board_deleted
+        FROM posts p
+        JOIN threads t ON p.thread_id = t.thread_id
+        JOIN boards b ON t.board_id = b.board_id
+        WHERE p.post_id = ? AND p.deleted = FALSE
+    """, (post_id,), fetch_one=True)
+    
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+    
+    # Check permissions - user can delete their own posts, admins can delete any
+    if post["user_id"] != current_user["user_id"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this post"
+        )
+    
+    # Check if thread is locked (only admins can delete in locked threads)
+    if post["locked"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot delete posts in locked thread"
+        )
+    
+    # Mark post as deleted
+    db.execute_query(
+        "UPDATE posts SET deleted = TRUE WHERE post_id = ?",
+        (post_id,)
+    )
+    
+    # Log the moderation action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'post', ?, 'delete', ?)
+    """, (current_user["user_id"], post_id, time.time()))
+    
+    return {"message": "Post deleted successfully"}
+
+@app.patch("/api/posts/{post_id}/restore")
+async def restore_post(
+    post_id: int,
+    current_user: dict = Depends(require_admin)
+):
+    """Restore a deleted post (admin only)"""
+    # Get the post
+    post = db.execute_query("""
+        SELECT p.*, t.deleted as thread_deleted, b.deleted as board_deleted
+        FROM posts p
+        JOIN threads t ON p.thread_id = t.thread_id
+        JOIN boards b ON t.board_id = b.board_id
+        WHERE p.post_id = ? AND p.deleted = TRUE
+    """, (post_id,), fetch_one=True)
+    
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Deleted post not found"
+        )
+    
+    # Check if thread/board is deleted
+    if post["thread_deleted"] or post["board_deleted"]:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Cannot restore post in deleted thread or board"
+        )
+    
+    # Restore the post
+    db.execute_query(
+        "UPDATE posts SET deleted = FALSE WHERE post_id = ?",
+        (post_id,)
+    )
+    
+    # Log the moderation action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'post', ?, 'restore', ?)
+    """, (current_user["user_id"], post_id, time.time()))
+    
+    return {"message": "Post restored successfully"}
+
+@app.get("/api/posts/{post_id}/history")
+async def get_post_edit_history(
+    post_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get edit history for a post"""
+    # Get the post to check permissions
+    post = db.execute_query("""
+        SELECT p.*, t.locked, t.deleted as thread_deleted, b.deleted as board_deleted
+        FROM posts p
+        JOIN threads t ON p.thread_id = t.thread_id
+        JOIN boards b ON t.board_id = b.board_id
+        WHERE p.post_id = ?
+    """, (post_id,), fetch_one=True)
+    
+    if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Post not found"
+        )
+    
+    # Only post author, thread moderators, or admins can view edit history
+    if (post["user_id"] != current_user["user_id"] and 
+        not current_user.get("is_admin")):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view edit history"
+        )
+    
+    # Get edit history
+    edits = db.execute_query("""
+        SELECT pe.*, u.username as editor_name
+        FROM post_edits pe
+        JOIN users u ON pe.editor_id = u.user_id
+        WHERE pe.post_id = ?
+        ORDER BY pe.timestamp DESC
+    """, (post_id,))
+    
+    return [dict(edit) for edit in edits]
 # =============================================================================
 # BOARD ENDPOINTS
 # =============================================================================

@@ -223,7 +223,13 @@ class ForumAPI {
             body: JSON.stringify({ content })
         });
     }
+    async getPost(postId) {
+        return this.request(`/api/posts/${postId}`);
+    }
 
+    async getPostEditHistory(postId) {
+        return this.request(`/api/posts/${postId}/history`);
+    }
     async editPost(postId, content) {
         return this.request(`/api/posts/${postId}`, {
             method: 'PATCH',
@@ -241,6 +247,26 @@ class ForumAPI {
         return this.request(`/api/posts/${postId}/restore`, {
             method: 'PATCH'
         });
+    }
+    async showPostHistory(postId) {
+        try {
+            const history = await this.api.getPostEditHistory(postId);
+            this.createModal(Templates.modals.postHistory(history, postId));
+        } catch (error) {
+            UIComponents.showError(error.message);
+        }
+    }
+
+    async refreshPost(postId) {
+        try {
+            const post = await this.api.getPost(postId);
+            const postElement = document.getElementById(`post-content-${postId}`);
+            if (postElement) {
+                postElement.innerHTML = UIComponents.escapeHtml(post.content).replace(/\n/g, '<br>');
+            }
+        } catch (error) {
+            console.warn('Failed to refresh post:', error);
+        }
     }
 
     // Admin methods
