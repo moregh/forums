@@ -13,9 +13,7 @@ from typing import Optional, List, Dict, Any
 import jwt
 import bcrypt
 import sqlite3
-import secrets
 import time
-from contextlib import asynccontextmanager
 from database import DatabaseManager
 # =============================================================================
 # API MODELS (Request/Response Schemas)
