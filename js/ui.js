@@ -105,33 +105,13 @@ class UIComponents {
         return pagination;
     }
 
-    static renderBoards(boards) {
-        if (!boards || boards.length === 0) {
-            return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
-        }
-        
-        return boards.map(board => `
-            <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
-                <h3>${this.escapeHtml(board.name)}</h3>
-                <p>${this.escapeHtml(board.description)}</p>
-                <div class="board-stats">
-                    <span>${board.thread_count} threads</span>
-                    <span>${board.post_count} posts</span>
-                    ${board.last_post_username ? `
-                        <span>Last: ${this.escapeHtml(board.last_post_username)}</span>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-    }
-
     static renderThreads(threads, currentUser) {
     if (!threads || threads.length === 0) {
         return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
     }
     
     return threads.map(thread => {
-        // Handle both API response formats
+        // Handle both API response formats consistently
         const safeThread = {
             thread_id: thread.thread_id,
             title: thread.title || 'Untitled Thread',
@@ -146,9 +126,12 @@ class UIComponents {
             user_id: thread.user_id || thread.author_id || 0
         };
         
+        // Encode thread data for safe passing
+        const encodedThreadData = encodeURIComponent(JSON.stringify(safeThread));
+        
         return `
             <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
-                 onclick="forum.showThread(${safeThread.thread_id}, 1, ${JSON.stringify(safeThread).replace(/"/g, '&quot;')}); forum.router.navigate('/threads/${safeThread.thread_id}', false);">
+                 onclick="forum.navigateToThread(${safeThread.thread_id}, JSON.parse(decodeURIComponent('${encodedThreadData}')));">
                 <div class="thread-info">
                     <h4>${this.escapeHtml(safeThread.title)}</h4>
                     <span class="thread-meta">
@@ -186,7 +169,25 @@ class UIComponents {
         `;
     }).join('');
 }
-
+    static renderBoards(boards) {
+    if (!boards || boards.length === 0) {
+        return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
+    }
+    
+    return boards.map(board => `
+        <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
+            <h3>${UIComponents.escapeHtml(board.name)}</h3>
+            <p>${UIComponents.escapeHtml(board.description)}</p>
+            <div class="board-stats">
+                <span>${board.thread_count} threads</span>
+                <span>${board.post_count} posts</span>
+                ${board.last_post_username ? `
+                    <span>Last: ${UIComponents.escapeHtml(board.last_post_username)}</span>
+                ` : ''}
+            </div>
+        </div>
+    `).join('');
+}
     static renderPosts(posts, currentUser) {
         if (!posts || posts.length === 0) {
             return '<div class="empty-state"><h3>No posts</h3><p>No posts found in this thread.</p></div>';

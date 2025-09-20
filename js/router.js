@@ -14,15 +14,19 @@ class Router {
         this.routes[path] = handler;
     }
 
-    // Navigate to route
     navigate(path, pushState = true) {
         if (this.isNavigating) return; // Prevent recursion
         
+        // Don't push state if we're already on this path
         if (pushState && path !== window.location.pathname) {
             history.pushState({}, '', path);
         }
-        this.handleRoute();
-    }
+        
+        // Only handle route if the path actually changed
+        if (path !== this.currentRoute) {
+            this.handleRoute();
+        }
+}
 
     // Handle current route
     handleRoute() {

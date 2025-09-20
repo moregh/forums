@@ -14,7 +14,10 @@ class ForumApp {
         this.router.register('/register', () => this.showRegister());
         this.router.register('/admin', () => this.showAdmin());
         this.router.register('/boards/:id', (params) => this.showBoard(params.id));
-        this.router.register('/threads/:id', (params) => this.showThread(params.id, 1, params.threadData));
+        this.router.register('/threads/:id', (params) => {
+            // Don't pass threadData from URL - let it fetch fresh data
+            this.showThread(params.id, 1);
+        });
     }
 
     setupEventListeners() {
@@ -74,6 +77,19 @@ class ForumApp {
     showRegister() {
         document.getElementById('content').innerHTML = Templates.register();
     }
+    // Add this method to ForumApp class
+async navigateToThread(threadId, threadData = null) {
+    // Prevent multiple rapid navigations
+    if (this.isNavigating) return;
+    this.isNavigating = true;
+    
+    try {
+        this.router.navigate(`/threads/${threadId}`, true);
+        await this.showThread(threadId, 1, threadData);
+    } finally {
+        this.isNavigating = false;
+    }
+}
 
     async showAdmin() {
         const currentUser = this.state.getState().user;
