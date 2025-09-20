@@ -1,4 +1,10 @@
 import sqlite3
+from typing import List, Dict, Optional, Any
+from datetime import datetime, timezone
+
+
+def timestamp() -> float:
+    return datetime.now(timezone.utc).timestamp()
 
 
 class DatabaseManager:
@@ -23,5 +29,596 @@ class DatabaseManager:
             cursor = conn.cursor()
             cursor.execute(query, params)
             conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid  # type: ignore
 
+    # =============================================================================
+    # USER OPERATIONS
+    # =============================================================================
+    
+    def get_user_by_username(self, username: str) -> Optional[Dict]:
+        """Get user by username"""
+        user = self.execute_query(
+            "SELECT * FROM users WHERE username = ?",
+            (username,),
+            fetch_one=True
+        )
+        return dict(user) if user else None
+    
+    def get_user_by_id(self, user_id: int) -> Optional[Dict]:
+        """Get user by ID"""
+        user = self.execute_query(
+            "SELECT * FROM users WHERE user_id = ?",
+            (user_id,),
+            fetch_one=True
+        )
+        return dict(user) if user else None
+    
+    def check_user_exists(self, username: str, email: str) -> bool:
+        """Check if username or email already exists"""
+        existing = self.execute_query(
+            "SELECT user_id FROM users WHERE username = ? OR email = ?",
+            (username, email),
+            fetch_one=True
+        )
+        return existing is not None
+    
+    def create_user(self, username: str, email: str, password_hash: str, password_salt: str) -> int:
+        """Create a new user"""
+        current_time = timestamp()
+        return self.execute_insert("""
+            INSERT INTO users (username, email, password_hash, password_salt, 
+                              password_changed_at, join_date, last_activity)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (username, email, password_hash, password_salt, current_time, current_time, current_time))
+    
+    def update_user_login(self, user_id: int, client_ip: str):
+        """Update user login information"""
+        current_time = timestamp()
+        self.execute_query("""
+            UPDATE users 
+            SET failed_login_attempts = 0, 
+                locked_until = NULL,
+                last_activity = ?,
+                last_login_at = ?,
+                last_login_ip = ?
+            WHERE user_id = ?
+        """, (current_time, current_time, client_ip, user_id))
+    
+    def increment_failed_login(self, user_id: int, client_ip: str):
+        """Increment failed login attempts"""
+        self.execute_query("""
+            UPDATE users 
+            SET failed_login_attempts = failed_login_attempts + 1,
+                last_login_ip = ?
+            WHERE user_id = ?
+        """, (client_ip, user_id))
+    
+    def ban_user(self, user_id: int) -> bool:
+        """Ban a user"""
+        self.execute_query(
+            "UPDATE users SET is_banned = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        return True
+    
+    def unban_user(self, user_id: int) -> bool:
+        """Unban a user"""
+        self.execute_query(
+            "UPDATE users SET is_banned = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        return True
+    
+    def promote_user_to_admin(self, user_id: int) -> bool:
+        """Promote user to admin"""
+        self.execute_query(
+            "UPDATE users SET is_admin = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        return True
+    
+    def demote_user_from_admin(self, user_id: int) -> bool:
+        """Remove admin privileges"""
+        self.execute_query(
+            "UPDATE users SET is_admin = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        return True
+    
+    def get_all_users(self, page: int = 1, per_page: int = 20) -> List[Dict]:
+        """Get all users with pagination"""
+        offset = (page - 1) * per_page
+        users = self.execute_query("""
+            SELECT * FROM user_activity 
+            ORDER BY last_activity DESC
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
+        return [dict(user) for user in users]
+    
+    def update_user_profile(self, user_id: int, update_fields: Dict[str, Any]):
+        """Update user profile fields"""
+        if not update_fields:
+            return
+        
+        field_updates = []
+        values = []
+        
+        for field, value in update_fields.items():
+            field_updates.append(f"{field} = ?")
+            values.append(value)
+        
+        values.append(user_id)
+        
+        self.execute_query(
+            f"UPDATE users SET {', '.join(field_updates)}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+            tuple(values)
+        )
+
+    # =============================================================================
+    # USER PREFERENCES
+    # =============================================================================
+    
+    def get_user_preferences(self, user_id: int) -> Optional[Dict]:
+        """Get user preferences"""
+        prefs = self.execute_query(
+            "SELECT * FROM user_preferences WHERE user_id = ?",
+            (user_id,),
+            fetch_one=True
+        )
+        return dict(prefs) if prefs else None
+    
+    def update_user_preferences(self, user_id: int, preferences: Dict[str, Any]):
+        """Update user preferences"""
+        existing = self.execute_query(
+            "SELECT user_id FROM user_preferences WHERE user_id = ?",
+            (user_id,),
+            fetch_one=True
+        )
+        
+        if existing:
+            field_updates = []
+            values = []
+            
+            for field, value in preferences.items():
+                field_updates.append(f"{field} = ?")
+                values.append(value)
+            
+            if field_updates:
+                values.append(user_id)
+                self.execute_query(
+                    f"UPDATE user_preferences SET {', '.join(field_updates)}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                    tuple(values)
+                )
+        else:
+            self.execute_insert(
+                "INSERT INTO user_preferences (user_id) VALUES (?)",
+                (user_id,)
+            )
+
+    # =============================================================================
+    # BOARD OPERATIONS
+    # =============================================================================
+    
+    def get_all_boards(self) -> List[Dict]:
+        """Get all visible boards"""
+        boards = self.execute_query("SELECT * FROM board_summary ORDER BY name")
+        return [dict(board) for board in boards]
+    
+    def create_board(self, name: str, description: str, creator_id: int) -> int:
+        """Create a new board"""
+        board_id = self.execute_insert(
+            "INSERT INTO boards (name, description, creator_id) VALUES (?, ?, ?)",
+            (name, description, creator_id)
+        )
+        
+        # Add creator as moderator
+        self.execute_insert(
+            "INSERT INTO board_moderators (board_id, user_id, assigned_by) VALUES (?, ?, ?)",
+            (board_id, creator_id, creator_id)
+        )
+        
+        # Initialize board stats
+        self.execute_insert(
+            "INSERT INTO board_stats (board_id, thread_count, post_count) VALUES (?, 0, 0)",
+            (board_id,)
+        )
+        
+        return board_id
+    
+    def get_board_by_id(self, board_id: int) -> Optional[Dict]:
+        """Get board by ID"""
+        board = self.execute_query(
+            "SELECT * FROM board_summary WHERE board_id = ?",
+            (board_id,),
+            fetch_one=True
+        )
+        return dict(board) if board else None
+    
+    def board_exists(self, board_id: int) -> bool:
+        """Check if board exists and is not deleted"""
+        board = self.execute_query(
+            "SELECT board_id FROM boards WHERE board_id = ? AND deleted = FALSE",
+            (board_id,),
+            fetch_one=True
+        )
+        return board is not None
+
+    # =============================================================================
+    # THREAD OPERATIONS
+    # =============================================================================
+    
+    def get_threads_by_board(self, board_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
+        """Get threads in a board with pagination"""
+        offset = (page - 1) * per_page
+        threads = self.execute_query("""
+            SELECT * FROM active_threads 
+            WHERE board_id = ?
+            ORDER BY sticky DESC, last_post_at DESC
+            LIMIT ? OFFSET ?
+        """, (board_id, per_page, offset))
+        
+        # Map view fields to expected model fields
+        mapped_threads = []
+        for thread in threads:
+            thread_dict = dict(thread)
+            thread_dict['user_id'] = thread_dict['author_id']
+            thread_dict['username'] = thread_dict['author_name'] 
+            thread_dict['timestamp'] = thread_dict['created_at']
+            mapped_threads.append(thread_dict)
+        
+        return mapped_threads
+    
+    def get_thread_by_id(self, thread_id: int) -> Optional[Dict]:
+        """Get thread by ID"""
+        thread = self.execute_query("""
+            SELECT * FROM active_threads 
+            WHERE thread_id = ?
+        """, (thread_id,), fetch_one=True)
+        
+        if not thread:
+            return None
+            
+        thread_dict = dict(thread)
+        thread_dict['user_id'] = thread_dict['author_id']
+        thread_dict['username'] = thread_dict['author_name'] 
+        thread_dict['timestamp'] = thread_dict['created_at']
+        
+        return thread_dict
+    
+    def create_thread(self, board_id: int, user_id: int, title: str, content: str) -> int:
+        """Create a new thread with initial post"""
+        current_time = timestamp()
+        
+        # Create thread
+        thread_id = self.execute_insert("""
+            INSERT INTO threads (board_id, user_id, title, timestamp, last_post_at, last_post_user_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (board_id, user_id, title, current_time, current_time, user_id))
+        
+        # Create initial post
+        self.execute_insert("""
+            INSERT INTO posts (thread_id, user_id, content, timestamp)
+            VALUES (?, ?, ?, ?)
+        """, (thread_id, user_id, content, current_time))
+        
+        return thread_id
+    
+    def thread_exists_and_accessible(self, thread_id: int) -> Optional[Dict]:
+        """Check if thread exists and is accessible (not deleted, board not deleted)"""
+        thread = self.execute_query("""
+            SELECT t.thread_id, t.locked, t.user_id, b.deleted as board_deleted
+            FROM threads t
+            JOIN boards b ON t.board_id = b.board_id
+            WHERE t.thread_id = ? AND t.deleted = FALSE
+        """, (thread_id,), fetch_one=True)
+        
+        return dict(thread) if thread else None
+    
+    def delete_thread(self, thread_id: int):
+        """Mark thread as deleted"""
+        self.execute_query(
+            "UPDATE threads SET deleted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+            (thread_id,)
+        )
+    
+    def update_thread_lock_status(self, thread_id: int, locked: bool):
+        """Lock or unlock a thread"""
+        self.execute_query(
+            "UPDATE threads SET locked = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+            (locked, thread_id)
+        )
+    
+    def update_thread_sticky_status(self, thread_id: int, sticky: bool):
+        """Make thread sticky or unsticky"""
+        self.execute_query(
+            "UPDATE threads SET sticky = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+            (sticky, thread_id)
+        )
+    
+    def increment_thread_view_count(self, thread_id: int):
+        """Increment thread view count"""
+        self.execute_query(
+            "UPDATE threads SET view_count = view_count + 1 WHERE thread_id = ?",
+            (thread_id,)
+        )
+
+    # =============================================================================
+    # POST OPERATIONS
+    # =============================================================================
+    
+    def get_posts_by_thread(self, thread_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
+        """Get posts in a thread with pagination"""
+        offset = (page - 1) * per_page
+        posts = self.execute_query("""
+            SELECT p.*, u.username 
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            WHERE p.thread_id = ? AND p.deleted = FALSE
+            ORDER BY p.timestamp ASC
+            LIMIT ? OFFSET ?
+        """, (thread_id, per_page, offset))
+        
+        return [dict(post) for post in posts]
+    
+    def get_post_by_id(self, post_id: int) -> Optional[Dict]:
+        """Get post by ID"""
+        post = self.execute_query("""
+            SELECT p.*, u.username 
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            WHERE p.post_id = ? AND p.deleted = FALSE
+        """, (post_id,), fetch_one=True)
+        
+        return dict(post) if post else None
+    
+    def get_post_with_context(self, post_id: int) -> Optional[Dict]:
+        """Get post with thread and board context for permission checking"""
+        post = self.execute_query("""
+            SELECT p.*, t.locked, t.deleted as thread_deleted, b.deleted as board_deleted
+            FROM posts p
+            JOIN threads t ON p.thread_id = t.thread_id
+            JOIN boards b ON t.board_id = b.board_id
+            WHERE p.post_id = ? AND p.deleted = FALSE
+        """, (post_id,), fetch_one=True)
+        
+        return dict(post) if post else None
+    
+    def create_post(self, thread_id: int, user_id: int, content: str) -> int:
+        """Create a new post"""
+        current_time = timestamp()
+        return self.execute_insert("""
+            INSERT INTO posts (thread_id, user_id, content, timestamp)
+            VALUES (?, ?, ?, ?)
+        """, (thread_id, user_id, content, current_time))
+    
+    def update_post(self, post_id: int, content: str, editor_id: int):
+        """Update post content and track edit history"""
+        current_time = timestamp()
+        
+        # Get current content for history
+        current_post = self.execute_query(
+            "SELECT content FROM posts WHERE post_id = ?",
+            (post_id,),
+            fetch_one=True
+        )
+        
+        if current_post:
+            # Store edit history
+            self.execute_insert("""
+                INSERT INTO post_edits (post_id, editor_id, old_content, new_content, timestamp)
+                VALUES (?, ?, ?, ?, ?)
+            """, (post_id, editor_id, current_post["content"], content, current_time))
+        
+        # Update the post
+        self.execute_query("""
+            UPDATE posts 
+            SET content = ?, 
+                edited = TRUE, 
+                edit_count = edit_count + 1,
+                edited_at = ?,
+                edited_by = ?
+            WHERE post_id = ?
+        """, (content, current_time, editor_id, post_id))
+    
+    def delete_post(self, post_id: int):
+        """Mark post as deleted"""
+        self.execute_query(
+            "UPDATE posts SET deleted = TRUE WHERE post_id = ?",
+            (post_id,)
+        )
+    
+    def restore_post(self, post_id: int):
+        """Restore a deleted post"""
+        # Check if post exists and is deleted
+        post = self.execute_query("""
+            SELECT p.*, t.deleted as thread_deleted, b.deleted as board_deleted
+            FROM posts p
+            JOIN threads t ON p.thread_id = t.thread_id
+            JOIN boards b ON t.board_id = b.board_id
+            WHERE p.post_id = ? AND p.deleted = TRUE
+        """, (post_id,), fetch_one=True)
+        
+        if not post:
+            return False
+            
+        if post["thread_deleted"] or post["board_deleted"]:
+            return False
+        
+        self.execute_query(
+            "UPDATE posts SET deleted = FALSE WHERE post_id = ?",
+            (post_id,)
+        )
+        return True
+    
+    def get_post_edit_history(self, post_id: int) -> List[Dict]:
+        """Get edit history for a post"""
+        edits = self.execute_query("""
+            SELECT pe.*, u.username as editor_name
+            FROM post_edits pe
+            JOIN users u ON pe.editor_id = u.user_id
+            WHERE pe.post_id = ?
+            ORDER BY pe.timestamp DESC
+        """, (post_id,))
+        
+        return [dict(edit) for edit in edits]
+
+    # =============================================================================
+    # SEARCH OPERATIONS
+    # =============================================================================
+    
+    def search_forum_content(self, query: str, search_type: str = "all", page: int = 1, per_page: int = 20) -> Dict:
+        """Search across forum content"""
+        offset = (page - 1) * per_page
+        search_term = f"%{query}%"
+        results = {"threads": [], "posts": [], "users": []}
+        
+        if search_type in ["all", "threads"]:
+            threads = self.execute_query("""
+                SELECT * FROM active_threads 
+                WHERE title LIKE ? 
+                ORDER BY created_at DESC
+                LIMIT ? OFFSET ?
+            """, (search_term, per_page, offset))
+            results["threads"] = [dict(thread) for thread in threads]
+        
+        if search_type in ["all", "posts"]:
+            posts = self.execute_query("""
+                SELECT p.*, u.username, t.title as thread_title
+                FROM posts p
+                JOIN users u ON p.user_id = u.user_id
+                JOIN threads t ON p.thread_id = t.thread_id
+                WHERE p.content LIKE ? AND p.deleted = FALSE AND t.deleted = FALSE
+                ORDER BY p.timestamp DESC
+                LIMIT ? OFFSET ?
+            """, (search_term, per_page, offset))
+            results["posts"] = [dict(post) for post in posts]
+        
+        if search_type in ["all", "users"]:
+            users = self.execute_query("""
+                SELECT user_id, username, join_date, post_count, is_admin
+                FROM users 
+                WHERE username LIKE ? AND is_banned = FALSE
+                ORDER BY post_count DESC
+                LIMIT ? OFFSET ?
+            """, (search_term, per_page, offset))
+            results["users"] = [dict(user) for user in users]
+        
+        return results
+
+    # =============================================================================
+    # LOGGING AND AUDIT OPERATIONS
+    # =============================================================================
+    
+    def log_security_audit(self, user_id: int, event_type: str, ip_address: str, 
+                          user_agent: str = "", event_data: str = ""):
+        """Log security audit event"""
+        self.execute_insert("""
+            INSERT INTO security_audit_log (user_id, event_type, ip_address, user_agent, event_data, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (user_id, event_type, ip_address, user_agent, event_data, timestamp()))
+    
+    def log_moderation_action(self, moderator_id: int, target_type: str, target_id: int, 
+                             action: str, reason: str = ""):
+        """Log moderation action"""
+        self.execute_insert("""
+            INSERT INTO moderation_log (moderator_id, target_type, target_id, action, reason, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (moderator_id, target_type, target_id, action, reason, timestamp()))
+    
+    def get_moderation_log(self, page: int = 1, per_page: int = 50) -> List[Dict]:
+        """Get moderation log with pagination"""
+        offset = (page - 1) * per_page
+        logs = self.execute_query("""
+            SELECT ml.*, u.username as moderator_name
+            FROM moderation_log ml
+            JOIN users u ON ml.moderator_id = u.user_id
+            ORDER BY ml.timestamp DESC
+            LIMIT ? OFFSET ?
+        """, (per_page, offset))
+        
+        return [dict(log) for log in logs]
+
+    # =============================================================================
+    # STATISTICS OPERATIONS
+    # =============================================================================
+    
+    def get_forum_statistics(self) -> Dict:
+        """Get comprehensive forum statistics"""
+        stats = {}
+        
+        # Total counts
+        stats["total_users"] = self.execute_query(
+            "SELECT COUNT(*) as count FROM users", fetch_one=True
+        )["count"]
+        
+        stats["total_threads"] = self.execute_query(
+            "SELECT COUNT(*) as count FROM threads WHERE deleted = FALSE", fetch_one=True
+        )["count"]
+        
+        stats["total_posts"] = self.execute_query(
+            "SELECT COUNT(*) as count FROM posts WHERE deleted = FALSE", fetch_one=True
+        )["count"]
+        
+        stats["total_boards"] = self.execute_query(
+            "SELECT COUNT(*) as count FROM boards WHERE deleted = FALSE", fetch_one=True
+        )["count"]
+        
+        # Recent activity
+        stats["users_online"] = self.execute_query("""
+            SELECT COUNT(DISTINCT user_id) as count 
+            FROM user_sessions 
+            WHERE is_active = TRUE AND last_activity > ?
+        """, (timestamp() - 900,), fetch_one=True)["count"]  # Last 15 minutes
+        
+        stats["posts_today"] = self.execute_query("""
+            SELECT COUNT(*) as count 
+            FROM posts 
+            WHERE timestamp > ? AND deleted = FALSE
+        """, (timestamp() - 86400,), fetch_one=True)["count"]  # Last 24 hours
+        
+        # Top contributors
+        top_posters = self.execute_query("""
+            SELECT username, post_count 
+            FROM users 
+            WHERE is_banned = FALSE
+            ORDER BY post_count DESC 
+            LIMIT 5
+        """)
+        stats["top_posters"] = [dict(poster) for poster in top_posters]
+        
+        return stats
+
+    # =============================================================================
+    # RATE LIMITING SUPPORT
+    # =============================================================================
+    
+    def check_rate_limit(self, identifier: str, action: str, limit: int, window_minutes: int = 60) -> bool:
+        """Check if action is within rate limits"""
+        window_start = timestamp() - (window_minutes * 60)
+        
+        # Clean up old records
+        self.execute_query(
+            "DELETE FROM rate_limits WHERE window_start < ? AND identifier = ? AND action_type = ?",
+            (window_start, identifier, action)
+        )
+        
+        # Check current count
+        result = self.execute_query(
+            "SELECT attempt_count FROM rate_limits WHERE identifier = ? AND action_type = ?",
+            (identifier, action),
+            fetch_one=True
+        )
+        
+        current_count = result["attempt_count"] if result else 0
+        
+        if current_count >= limit:
+            return False
+        
+        # Increment counter
+        self.execute_query("""
+            INSERT OR REPLACE INTO rate_limits 
+            (identifier, action_type, attempt_count, window_start)
+            VALUES (?, ?, ?, ?)
+        """, (identifier, action, current_count + 1, timestamp()))
+        
+        return True
