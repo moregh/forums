@@ -64,6 +64,7 @@ class ForumAPI {
             return data;
         } catch (error) {
             console.error('API request failed:', error);
+            UIComponents.showError(`API request failed: ${error}`);
             throw error;
         }
     }

@@ -93,6 +93,7 @@ async navigateToThread(threadId, threadData = null) {
         this.router.navigate(`/threads/${threadId}`, true);
         await this.showThread(threadId, 1, threadData);
     } catch (error) {
+        UIComponents.showError(`Navigation error: ${error}`);
         console.error('Navigation error:', error);
         this.state.setState({ error: error.message });
     } finally {
@@ -218,6 +219,7 @@ async showThread(threadId, page = 1, threadData = null) {
         console.log('Thread state updated successfully');
         
     } catch (error) {
+        UIComponents.showError(`Error in showThread: ${error}`);
         console.error('Error in showThread:', error);
         
         const content = document.getElementById('content');
@@ -499,6 +501,7 @@ async showThread(threadId, page = 1, threadData = null) {
         this.state.setState({ loading: false });
         
     } catch (error) {
+        UIComponents.showError(`Error loading admin panel: ${error}`);
         console.error('Error loading admin panel:', error);
         this.state.setState({ error: error.message, loading: false });
     }
