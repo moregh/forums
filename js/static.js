@@ -81,18 +81,81 @@ const Templates = {
         )}
     `,
 
-    thread: (threadInfo, posts, currentUser, page, totalPages) => `
-        <div class="page-header">
-            <h1>${threadInfo ? UIComponents.escapeHtml(threadInfo.title) : 'Thread'}</h1>
-            ${currentUser && !threadInfo?.locked ? `<button onclick="forum.showReplyForm(${threadInfo.thread_id})">Reply</button>` : ''}
-        </div>
-        <div class="posts-list">
-            ${UIComponents.renderPosts(posts, currentUser)}
-        </div>
-        ${UIComponents.renderPagination(page, totalPages, (newPage) =>
-            `forum.showThread(${threadInfo.thread_id}, ${newPage})`
-        )}
-    `,
+    thread: (threadInfo, posts, currentUser, page, totalPages) => {
+        // Ensure we have valid data
+        if (!threadInfo || !Array.isArray(posts)) {
+            console.error('Invalid thread data:', { threadInfo, posts });
+            return `
+                <div class="error-state">
+                    <h3>Error Loading Thread</h3>
+                    <p>Invalid thread data received from server.</p>
+                    <button onclick="forum.router.navigate('/')">Return to Home</button>
+                </div>
+            `;
+        }
+
+        try {
+            const safeThreadInfo = {
+                thread_id: parseInt(threadInfo.thread_id) || 0,
+                title: threadInfo.title || 'Unknown Thread',
+                locked: Boolean(threadInfo.locked),
+                sticky: Boolean(threadInfo.sticky),
+                reply_count: threadInfo.reply_count || 0,
+                view_count: threadInfo.view_count || 0,
+                user_id: threadInfo.user_id || threadInfo.author_id || 0,
+                username: threadInfo.username || threadInfo.author_name || 'Unknown',
+                timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
+                board_id: threadInfo.board_id || 0
+            };
+
+            const threadHTML = `
+                <div class="page-header">
+                    <div>
+                        <h1>${UIComponents.escapeHtml(safeThreadInfo.title)}</h1>
+                        <div class="thread-meta">
+                            <span>by ${UIComponents.escapeHtml(safeThreadInfo.username)} • ${UIComponents.formatDate(safeThreadInfo.timestamp)}</span>
+                            ${safeThreadInfo.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
+                            ${safeThreadInfo.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
+                            <span> • ${safeThreadInfo.reply_count} replies • ${safeThreadInfo.view_count} views</span>
+                        </div>
+                    </div>
+                    <div class="page-actions">
+                        ${currentUser && !safeThreadInfo.locked ? `<button onclick="forum.showReplyForm(${safeThreadInfo.thread_id})" class="btn-primary">Reply</button>` : ''}
+                        ${UIComponents.canModerateThread(currentUser) ? `
+                            <div class="admin-actions">
+                                <button onclick="forum.toggleThreadLock(${safeThreadInfo.thread_id}, ${!safeThreadInfo.locked})" 
+                                        class="btn-small ${safeThreadInfo.locked ? 'btn-success' : 'btn-warning'}">
+                                    ${safeThreadInfo.locked ? 'Unlock' : 'Lock'}
+                                </button>
+                                <button onclick="forum.toggleThreadSticky(${safeThreadInfo.thread_id}, ${!safeThreadInfo.sticky})" 
+                                        class="btn-small ${safeThreadInfo.sticky ? 'btn-warning' : 'btn-secondary'}">
+                                    ${safeThreadInfo.sticky ? 'Unsticky' : 'Sticky'}
+                                </button>
+                                <button onclick="forum.deleteThread(${safeThreadInfo.thread_id})" class="btn-small btn-danger">Delete</button>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+                <div class="posts-list">
+                    ${UIComponents.renderPosts(posts, currentUser)}
+                </div>
+                ${totalPages > 1 ? UIComponents.renderPagination(page, totalPages, (newPage) =>
+                    `forum.showThread(${safeThreadInfo.thread_id}, ${newPage})`
+                ) : ''}
+            `;
+
+            return threadHTML;
+        } catch (error) {
+            console.error('Error rendering thread template:', error);
+            return `
+                <div class="error-state">
+                    <h3>Template Error</h3>
+                    <p>Failed to render thread. Please try refreshing the page.</p>
+                    <button onclick="forum.router.navigate('/')">Return to Home</button>
+                </div>
+            `;
+        }
+    },
 
     modals: {
         createBoard: () => `

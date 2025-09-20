@@ -124,96 +124,97 @@ async showThread(threadId, page = 1, threadData = null) {
         
         console.log('Loading thread:', threadId, 'page:', page);
         
-        // ONLY make the 2 necessary API calls
         let posts, threadInfo;
         
         if (threadData) {
-            // If we already have thread data (from clicking in board view), use it
+            console.log('Using provided thread data:', threadData);
             posts = await this.api.getPosts(threadId, page);
             threadInfo = threadData;
-            console.log('Using provided thread data');
         } else {
-            // Make both calls in parallel for efficiency
+            console.log('Fetching thread data from API');
             [posts, threadInfo] = await Promise.all([
                 this.api.getPosts(threadId, page),
                 this.api.getThreadInfo(threadId)
             ]);
-            console.log('Fetched thread data from API');
         }
         
-        console.log('Posts loaded:', posts?.length || 0);
-        console.log('Thread info:', threadInfo);
+        console.log('Posts loaded:', posts?.length || 0, posts);
+        console.log('Thread info loaded:', threadInfo);
+        
+        // Validate we have the minimum required data
+        if (!threadInfo || !threadInfo.thread_id) {
+            throw new Error('Invalid thread info received from API');
+        }
+        
+        if (!Array.isArray(posts)) {
+            console.warn('Posts is not an array, converting:', posts);
+            posts = [];
+        }
         
         const user = this.state.getState().user;
         
-        // Calculate pagination from thread reply_count (NO additional API calls)
-        const totalPosts = (threadInfo?.reply_count || 0) + 1; // +1 for original post
-        const totalPages = Math.ceil(totalPosts / 20);
+        // Calculate pagination properly
+        const totalPosts = Math.max((threadInfo.reply_count || 0) + 1, posts.length);
+        const postsPerPage = 20;
+        const totalPages = Math.ceil(totalPosts / postsPerPage);
         
-        console.log('Total posts calculated:', totalPosts, 'Total pages:', totalPages);
+        console.log('Pagination calc:', { totalPosts, totalPages, currentPage: page });
         
-        // Ensure we have valid thread info with comprehensive fallbacks
-        const safeThreadInfo = {
+        // Ensure we have clean thread data for template
+        const cleanThreadInfo = {
             thread_id: parseInt(threadId),
-            title: threadInfo?.title || `Thread ${threadId}`,
-            locked: Boolean(threadInfo?.locked),
-            sticky: Boolean(threadInfo?.sticky),
-            reply_count: threadInfo?.reply_count || 0,
-            view_count: threadInfo?.view_count || 0,
-            user_id: threadInfo?.user_id || threadInfo?.author_id || 0,
-            username: threadInfo?.username || threadInfo?.author_name || 'Unknown',
-            timestamp: threadInfo?.timestamp || threadInfo?.created_at || Date.now() / 1000,
-            board_id: threadInfo?.board_id || 0,
-            last_post_at: threadInfo?.last_post_at || null,
-            last_post_username: threadInfo?.last_post_username || null
+            title: threadInfo.title || `Thread ${threadId}`,
+            locked: Boolean(threadInfo.locked),
+            sticky: Boolean(threadInfo.sticky),
+            reply_count: threadInfo.reply_count || 0,
+            view_count: threadInfo.view_count || 0,
+            user_id: threadInfo.user_id || threadInfo.author_id || 0,
+            username: threadInfo.username || threadInfo.author_name || 'Unknown',
+            timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
+            board_id: threadInfo.board_id || 0,
+            last_post_at: threadInfo.last_post_at || null,
+            last_post_username: threadInfo.last_post_username || null
         };
         
-        console.log('Safe thread info created:', safeThreadInfo);
+        console.log('Clean thread info:', cleanThreadInfo);
         
-        // Validate posts array
-        const safePosts = Array.isArray(posts) ? posts : [];
-        console.log('Safe posts array length:', safePosts.length);
-        
-        // Generate HTML template
+        // Generate and set content
         const content = document.getElementById('content');
         if (!content) {
             throw new Error('Content element not found');
         }
         
-        const threadHTML = Templates.thread(safeThreadInfo, safePosts, user, page, totalPages);
-        console.log('Generated HTML length:', threadHTML?.length || 0);
+        const threadHTML = Templates.thread(cleanThreadInfo, posts, user, page, totalPages);
         
-        if (!threadHTML || threadHTML.length < 100) {
-            throw new Error('Generated HTML is too short, likely template error');
+        if (!threadHTML || threadHTML.includes('Error')) {
+            throw new Error('Template rendering failed');
         }
         
-        // Set the content
         content.innerHTML = threadHTML;
-        console.log('HTML set successfully');
+        console.log('Thread content set successfully');
 
         // Update state
         this.state.setState({ 
-            currentThread: safeThreadInfo, 
-            posts: safePosts, 
+            currentThread: cleanThreadInfo, 
+            posts: posts, 
             currentPage: page,
             totalPages: totalPages,
             loading: false 
         });
         
-        console.log('State updated, thread rendered successfully');
+        console.log('Thread state updated successfully');
         
     } catch (error) {
         console.error('Error in showThread:', error);
-        console.error('Stack trace:', error.stack);
         
-        // Show error state instead of blank screen
         const content = document.getElementById('content');
         if (content) {
             content.innerHTML = `
                 <div class="error-state">
                     <h3>Error Loading Thread</h3>
-                    <p>There was a problem loading this thread. Please try again.</p>
-                    <button onclick="forum.router.navigate('/')">Return to Home</button>
+                    <p>Failed to load thread: ${error.message}</p>
+                    <button onclick="forum.router.navigate('/')" class="btn-primary">Return to Home</button>
+                    <button onclick="location.reload()" class="btn-secondary">Retry</button>
                 </div>
             `;
         }
