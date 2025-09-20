@@ -363,7 +363,7 @@ CREATE TRIGGER log_login_attempt
     AFTER INSERT ON user_sessions
 BEGIN
     INSERT INTO security_audit_log (user_id, event_type, ip_address, user_agent, timestamp)
-    VALUES (NEW.user_id, 'login_success', NEW.ip_address, NEW.user_agent, NEW.created_at);
+    VALUES (NEW.user_id, 'login_success', COALESCE(NEW.ip_address, '127.0.0.1'), NEW.user_agent, NEW.created_at);
 END;
 
 CREATE TRIGGER increment_failed_login
@@ -371,9 +371,9 @@ CREATE TRIGGER increment_failed_login
     WHEN NEW.failed_login_attempts > OLD.failed_login_attempts
 BEGIN
     INSERT INTO security_audit_log (user_id, event_type, ip_address, event_data, timestamp)
-    VALUES (NEW.user_id, 'login_failed', '', 
+    VALUES (NEW.user_id, 'login_failed', '127.0.0.1', 
             json_object('attempts', NEW.failed_login_attempts), 
-            datetime('now', 'unixepoch'));
+            strftime('%s', 'now'));
     
     UPDATE users 
     SET locked_until = strftime('%s', 'now', '+15 minutes')
@@ -385,7 +385,7 @@ CREATE TRIGGER log_password_change
     WHEN NEW.password_hash != OLD.password_hash
 BEGIN
     INSERT INTO security_audit_log (user_id, event_type, ip_address, timestamp)
-    VALUES (NEW.user_id, 'password_changed', '', strftime('%s', 'now'));
+    VALUES (NEW.user_id, 'password_changed', '127.0.0.1', strftime('%s', 'now'));
     
     UPDATE users 
     SET failed_login_attempts = 0, locked_until = NULL
@@ -396,9 +396,10 @@ CREATE TRIGGER log_admin_change
     AFTER UPDATE ON users
     WHEN NEW.is_admin != OLD.is_admin
 BEGIN
-    INSERT INTO security_audit_log (user_id, event_type, event_data, timestamp)
+    INSERT INTO security_audit_log (user_id, event_type, ip_address, event_data, timestamp)
     VALUES (NEW.user_id, 
             CASE WHEN NEW.is_admin THEN 'admin_granted' ELSE 'admin_revoked' END,
+            '127.0.0.1',
             json_object('previous_status', OLD.is_admin, 'new_status', NEW.is_admin),
             strftime('%s', 'now'));
 END;
