@@ -412,7 +412,618 @@ async def delete_post(
     """, (current_user["user_id"], post_id, time.time()))
     
     return {"message": "Post deleted successfully"}
+# Missing Forum API Endpoints
+# Add these to your app.py file
 
+from typing import List, Optional
+import time
+from fastapi import HTTPException, status, Request, Depends
+from models import UserResponse, ErrorResponse
+
+# =============================================================================
+# USER MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@app.get("/api/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: int):
+    """Get user profile by ID"""
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    return UserResponse(**dict(user))
+
+@app.put("/api/users/{user_id}", response_model=UserResponse)
+async def update_user_profile(
+    user_id: int,
+    update_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update user profile (users can only update their own profile, admins can update any)"""
+    # Check permissions
+    if user_id != current_user["user_id"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this profile"
+        )
+    
+    # Check if user exists
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Build update query dynamically based on provided fields
+    allowed_fields = ["avatar_url"]  # Only allow safe fields for regular users
+    if current_user.get("is_admin"):
+        allowed_fields.extend(["email", "is_banned"])  # Admins can update more
+    
+    update_fields = []
+    update_values = []
+    
+    for field, value in update_data.items():
+        if field in allowed_fields:
+            update_fields.append(f"{field} = ?")
+            update_values.append(value)
+    
+    if not update_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid fields to update"
+        )
+    
+    update_values.append(user_id)
+    
+    db.execute_query(
+        f"UPDATE users SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        tuple(update_values)
+    )
+    
+    # Return updated user
+    updated_user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    return UserResponse(**dict(updated_user))
+
+# =============================================================================
+# USER PREFERENCES ENDPOINTS
+# =============================================================================
+
+@app.get("/api/users/{user_id}/preferences")
+async def get_user_preferences(
+    user_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get user preferences"""
+    # Users can only view their own preferences
+    if user_id != current_user["user_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view these preferences"
+        )
+    
+    preferences = db.execute_query(
+        "SELECT * FROM user_preferences WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not preferences:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User preferences not found"
+        )
+    
+    return dict(preferences)
+
+@app.put("/api/users/{user_id}/preferences")
+async def update_user_preferences(
+    user_id: int,
+    preferences_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update user preferences"""
+    # Users can only update their own preferences
+    if user_id != current_user["user_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update these preferences"
+        )
+    
+    # Check if preferences exist
+    existing = db.execute_query(
+        "SELECT user_id FROM user_preferences WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    allowed_fields = [
+        "email_notifications", "theme", "timezone", "posts_per_page",
+        "signature", "show_avatars", "show_signatures"
+    ]
+    
+    if existing:
+        # Update existing preferences
+        update_fields = []
+        update_values = []
+        
+        for field, value in preferences_data.items():
+            if field in allowed_fields:
+                update_fields.append(f"{field} = ?")
+                update_values.append(value)
+        
+        if update_fields:
+            update_values.append(user_id)
+            db.execute_query(
+                f"UPDATE user_preferences SET {', '.join(update_fields)}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+                tuple(update_values)
+            )
+    else:
+        # Create new preferences
+        db.execute_insert(
+            "INSERT INTO user_preferences (user_id) VALUES (?)",
+            (user_id,)
+        )
+        # Then update with provided values
+        return await update_user_preferences(user_id, preferences_data, current_user)
+    
+    # Return updated preferences
+    updated_preferences = db.execute_query(
+        "SELECT * FROM user_preferences WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    return dict(updated_preferences)
+
+# =============================================================================
+# ADMIN USER MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@app.get("/api/admin/users")
+async def get_all_users(
+    page: int = 1,
+    per_page: int = 20,
+    current_user: dict = Depends(require_admin)
+):
+    """Get all users (admin only)"""
+    offset = (page - 1) * per_page
+    
+    users = db.execute_query("""
+        SELECT * FROM user_activity 
+        ORDER BY last_activity DESC
+        LIMIT ? OFFSET ?
+    """, (per_page, offset))
+    
+    return [dict(user) for user in users]
+
+@app.post("/api/admin/users/{user_id}/ban")
+async def ban_user(
+    user_id: int,
+    ban_data: dict,
+    current_user: dict = Depends(require_admin)
+):
+    """Ban a user (admin only)"""
+    # Check if user exists
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if user["is_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot ban admin users"
+        )
+    
+    # Ban the user
+    db.execute_query(
+        "UPDATE users SET is_banned = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (user_id,)
+    )
+    
+    # Log the action
+    reason = ban_data.get("reason", "No reason provided")
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, reason, timestamp)
+        VALUES (?, 'user', ?, 'ban', ?, ?)
+    """, (current_user["user_id"], user_id, reason, time.time()))
+    
+    return {"message": "User banned successfully"}
+
+@app.post("/api/admin/users/{user_id}/unban")
+async def unban_user(
+    user_id: int,
+    current_user: dict = Depends(require_admin)
+):
+    """Unban a user (admin only)"""
+    # Check if user exists
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Unban the user
+    db.execute_query(
+        "UPDATE users SET is_banned = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (user_id,)
+    )
+    
+    # Log the action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'user', ?, 'unban', ?)
+    """, (current_user["user_id"], user_id, time.time()))
+    
+    return {"message": "User unbanned successfully"}
+
+@app.post("/api/admin/users/{user_id}/promote")
+async def make_user_admin(
+    user_id: int,
+    current_user: dict = Depends(require_admin)
+):
+    """Promote user to admin (admin only)"""
+    # Check if user exists
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if user["is_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is already an admin"
+        )
+    
+    # Promote to admin
+    db.execute_query(
+        "UPDATE users SET is_admin = TRUE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (user_id,)
+    )
+    
+    # Log the action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'user', ?, 'promote_admin', ?)
+    """, (current_user["user_id"], user_id, time.time()))
+    
+    return {"message": "User promoted to admin successfully"}
+
+@app.post("/api/admin/users/{user_id}/demote")
+async def remove_user_admin(
+    user_id: int,
+    current_user: dict = Depends(require_admin)
+):
+    """Remove admin privileges from user (admin only)"""
+    # Check if user exists
+    user = db.execute_query(
+        "SELECT * FROM users WHERE user_id = ?",
+        (user_id,),
+        fetch_one=True
+    )
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user["is_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User is not an admin"
+        )
+    
+    # Don't allow self-demotion
+    if user_id == current_user["user_id"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot demote yourself"
+        )
+    
+    # Remove admin privileges
+    db.execute_query(
+        "UPDATE users SET is_admin = FALSE, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
+        (user_id,)
+    )
+    
+    # Log the action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'user', ?, 'demote_admin', ?)
+    """, (current_user["user_id"], user_id, time.time()))
+    
+    return {"message": "Admin privileges removed successfully"}
+
+# =============================================================================
+# THREAD MANAGEMENT ENDPOINTS
+# =============================================================================
+
+@app.patch("/api/threads/{thread_id}/lock")
+async def toggle_thread_lock(
+    thread_id: int,
+    lock_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Lock or unlock a thread (admin only)"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required"
+        )
+    
+    # Check if thread exists
+    thread = db.execute_query(
+        "SELECT * FROM threads WHERE thread_id = ? AND deleted = FALSE",
+        (thread_id,),
+        fetch_one=True
+    )
+    
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread not found"
+        )
+    
+    locked = lock_data.get("locked", True)
+    
+    # Update thread lock status
+    db.execute_query(
+        "UPDATE threads SET locked = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+        (locked, thread_id)
+    )
+    
+    # Log the action
+    action = "lock" if locked else "unlock"
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'thread', ?, ?, ?)
+    """, (current_user["user_id"], thread_id, action, time.time()))
+    
+    return {"message": f"Thread {'locked' if locked else 'unlocked'} successfully"}
+
+@app.patch("/api/threads/{thread_id}/sticky")
+async def toggle_thread_sticky(
+    thread_id: int,
+    sticky_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Make thread sticky or unsticky (admin only)"""
+    if not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required"
+        )
+    
+    # Check if thread exists
+    thread = db.execute_query(
+        "SELECT * FROM threads WHERE thread_id = ? AND deleted = FALSE",
+        (thread_id,),
+        fetch_one=True
+    )
+    
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread not found"
+        )
+    
+    sticky = sticky_data.get("sticky", True)
+    
+    # Update thread sticky status
+    db.execute_query(
+        "UPDATE threads SET sticky = ?, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+        (sticky, thread_id)
+    )
+    
+    # Log the action
+    action = "sticky" if sticky else "unsticky"
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'thread', ?, ?, ?)
+    """, (current_user["user_id"], thread_id, action, time.time()))
+    
+    return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
+
+@app.delete("/api/threads/{thread_id}")
+async def delete_thread(
+    thread_id: int,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete a thread (admin or thread author only)"""
+    # Check if thread exists
+    thread = db.execute_query(
+        "SELECT * FROM threads WHERE thread_id = ? AND deleted = FALSE",
+        (thread_id,),
+        fetch_one=True
+    )
+    
+    if not thread:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Thread not found"
+        )
+    
+    # Check permissions - thread author or admin can delete
+    if thread["user_id"] != current_user["user_id"] and not current_user.get("is_admin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this thread"
+        )
+    
+    # Mark thread as deleted
+    db.execute_query(
+        "UPDATE threads SET deleted = TRUE, updated_at = CURRENT_TIMESTAMP WHERE thread_id = ?",
+        (thread_id,)
+    )
+    
+    # Log the action
+    db.execute_insert("""
+        INSERT INTO moderation_log (moderator_id, target_type, target_id, action, timestamp)
+        VALUES (?, 'thread', ?, 'delete', ?)
+    """, (current_user["user_id"], thread_id, time.time()))
+    
+    return {"message": "Thread deleted successfully"}
+
+# =============================================================================
+# SEARCH ENDPOINTS
+# =============================================================================
+
+@app.get("/api/search")
+async def search_forum(
+    q: str,
+    type: str = "all",  # "threads", "posts", "users", or "all"
+    page: int = 1,
+    per_page: int = 20
+):
+    """Search across forum content"""
+    if len(q.strip()) < 3:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Search query must be at least 3 characters"
+        )
+    
+    offset = (page - 1) * per_page
+    search_term = f"%{q}%"
+    results = {"threads": [], "posts": [], "users": []}
+    
+    if type in ["all", "threads"]:
+        # Search threads
+        threads = db.execute_query("""
+            SELECT * FROM active_threads 
+            WHERE title LIKE ? 
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (search_term, per_page, offset))
+        results["threads"] = [dict(thread) for thread in threads]
+    
+    if type in ["all", "posts"]:
+        # Search posts
+        posts = db.execute_query("""
+            SELECT p.*, u.username, t.title as thread_title
+            FROM posts p
+            JOIN users u ON p.user_id = u.user_id
+            JOIN threads t ON p.thread_id = t.thread_id
+            WHERE p.content LIKE ? AND p.deleted = FALSE AND t.deleted = FALSE
+            ORDER BY p.timestamp DESC
+            LIMIT ? OFFSET ?
+        """, (search_term, per_page, offset))
+        results["posts"] = [dict(post) for post in posts]
+    
+    if type in ["all", "users"]:
+        # Search users
+        users = db.execute_query("""
+            SELECT user_id, username, join_date, post_count, is_admin
+            FROM users 
+            WHERE username LIKE ? AND is_banned = FALSE
+            ORDER BY post_count DESC
+            LIMIT ? OFFSET ?
+        """, (search_term, per_page, offset))
+        results["users"] = [dict(user) for user in users]
+    
+    return results
+
+# =============================================================================
+# MODERATION LOG ENDPOINTS
+# =============================================================================
+
+@app.get("/api/admin/moderation-log")
+async def get_moderation_log(
+    page: int = 1,
+    per_page: int = 50,
+    current_user: dict = Depends(require_admin)
+):
+    """Get moderation log (admin only)"""
+    offset = (page - 1) * per_page
+    
+    logs = db.execute_query("""
+        SELECT ml.*, u.username as moderator_name
+        FROM moderation_log ml
+        JOIN users u ON ml.moderator_id = u.user_id
+        ORDER BY ml.timestamp DESC
+        LIMIT ? OFFSET ?
+    """, (per_page, offset))
+    
+    return [dict(log) for log in logs]
+
+# =============================================================================
+# STATISTICS ENDPOINTS
+# =============================================================================
+
+@app.get("/api/stats")
+async def get_forum_statistics():
+    """Get general forum statistics"""
+    stats = {}
+    
+    # Total counts
+    stats["total_users"] = db.execute_query("SELECT COUNT(*) as count FROM users", fetch_one=True)["count"]  
+    stats["total_threads"] = db.execute_query("SELECT COUNT(*) as count FROM threads WHERE deleted = FALSE", fetch_one=True)["count"]
+    stats["total_posts"] = db.execute_query("SELECT COUNT(*) as count FROM posts WHERE deleted = FALSE", fetch_one=True)["count"]
+    stats["total_boards"] = db.execute_query("SELECT COUNT(*) as count FROM boards WHERE deleted = FALSE", fetch_one=True)["count"]
+    
+    # Recent activity
+    stats["users_online"] = db.execute_query("""
+        SELECT COUNT(DISTINCT user_id) as count 
+        FROM user_sessions 
+        WHERE is_active = TRUE AND last_activity > ?
+    """, (time.time() - 900,), fetch_one=True)["count"]  # Active in last 15 minutes
+    
+    stats["posts_today"] = db.execute_query("""
+        SELECT COUNT(*) as count 
+        FROM posts 
+        WHERE timestamp > ? AND deleted = FALSE
+    """, (time.time() - 86400,), fetch_one=True)["count"]
+    
+    # Top contributors
+    top_posters = db.execute_query("""
+        SELECT username, post_count 
+        FROM users 
+        WHERE is_banned = FALSE
+        ORDER BY post_count DESC 
+        LIMIT 5
+    """)
+    stats["top_posters"] = [dict(poster) for poster in top_posters]
+    
+    return stats
 @app.patch("/api/posts/{post_id}/restore")
 async def restore_post(
     post_id: int,
