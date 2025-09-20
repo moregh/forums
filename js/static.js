@@ -26,7 +26,7 @@ const Templates = {
     home: (boards, user) => `
         <div class="page-header">
             <h1>Forum Boards</h1>
-            ${user?.is_admin ? `<button onclick="forum.showCreateBoardForm()">Create Board</button>` : ''}
+            ${user?.is_admin ? `<button class="btn-primary" onclick="forum.showCreateBoardForm()">Create Board</button>` : ''}
         </div>
         <div class="boards-list">
             ${UIComponents.renderBoards(boards)}
@@ -71,7 +71,7 @@ const Templates = {
     board: (board, threads, currentUser, page, totalPages) => `
         <div class="page-header">
             <h1>${board ? UIComponents.escapeHtml(board.name) : 'Board'}</h1>
-            ${currentUser ? `<button onclick="forum.showCreateThreadForm(${board.board_id})">New Thread</button>` : ''}
+            ${currentUser ? `<button class="btn-primary" onclick="forum.showCreateThreadForm(${board.board_id})">New Thread</button>` : ''}
         </div>
         <div class="threads-list">
             ${UIComponents.renderThreads(threads, currentUser)}
