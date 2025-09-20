@@ -1,5 +1,5 @@
 class ForumAPI {
-    constructor(baseURL = 'http://localhost:8000') {
+    constructor(baseURL = 'http://10.0.1.251:8000') {
         this.baseURL = baseURL;
         this.token = localStorage.getItem('auth_token');
         this.user = JSON.parse(localStorage.getItem('user') || 'null');
