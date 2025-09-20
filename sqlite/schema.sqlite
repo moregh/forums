@@ -407,9 +407,10 @@ CREATE TRIGGER log_user_ban
     AFTER UPDATE ON users
     WHEN NEW.is_banned != OLD.is_banned
 BEGIN
-    INSERT INTO security_audit_log (user_id, event_type, event_data, timestamp)
+    INSERT INTO security_audit_log (user_id, event_type, ip_address, event_data, timestamp)
     VALUES (NEW.user_id, 
             CASE WHEN NEW.is_banned THEN 'user_banned' ELSE 'user_unbanned' END,
+            '127.0.0.1',  -- Default IP for system actions
             json_object('previous_status', OLD.is_banned, 'new_status', NEW.is_banned),
             strftime('%s', 'now'));
 END;

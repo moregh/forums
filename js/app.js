@@ -388,9 +388,14 @@ async showThread(threadId, page = 1, threadData = null) {
 
     // Admin functions
     async banUser(userId) {
-        if (!confirm('Are you sure you want to ban this user?')) return;
+        const reason = prompt('Reason for ban (required):');
+        if (reason === null) {
+            UIComponents.showInfo('Cancelled ban user')
+            return; // User cancelled
+        }
+        
         try {
-            await this.api.banUser(userId);
+            await this.api.banUser(userId, reason);
             UIComponents.showSuccess('User banned successfully!');
             this.showAdmin();
         } catch (error) {

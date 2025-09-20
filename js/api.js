@@ -239,9 +239,12 @@ class ForumAPI {
     // REMOVED: Duplicate methods that don't exist
 
     // Admin methods
-    async banUser(userId) {
+    async banUser(userId, reason = null) {
         return this.request(`/api/admin/users/${userId}/ban`, {
-            method: 'POST'
+            method: 'POST',
+            body: JSON.stringify({ 
+                reason: reason || "No reason provided" 
+            })
         });
     }
 

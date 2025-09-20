@@ -56,6 +56,28 @@ class UIComponents {
         }, 3000);
     }
 
+    static showInfo(message) {
+        const infoDiv = document.createElement('div');
+        infoDiv.className = 'info-message';
+        infoDiv.textContent = message;
+        infoDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #2e71bdff;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            z-index: 1000;
+            max-width: 300px;
+        `;
+        setTimeout(() => {
+            if (infoDiv.pinfode) {
+                infoDiv.parentNode.removeChild(infoDiv);
+            }
+        }, 3000);
+    }
+
     static formatDate(timestamp) {
         return new Date(timestamp * 1000).toLocaleString();
     }
