@@ -1,0 +1,161 @@
+-- Create 20 Test Boards Script
+-- This script creates 20 boards with realistic topics and descriptions
+-- Run this after creating users
+
+-- Enable foreign key constraints
+PRAGMA foreign_keys = ON;
+
+-- Insert 20 boards with varied topics
+INSERT INTO boards (name, description, creator_id, created_at, updated_at)
+VALUES 
+    ('General Discussion', 'Talk about anything and everything that doesn''t fit in other categories', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Technology', 'Latest tech news, gadgets, innovations, and digital trends', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Programming', 'Code, development, software engineering, and programming languages', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Gaming', 'Video games, reviews, gaming culture, and esports discussions', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Science', 'Scientific discoveries, research, and academic discussions', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Politics & News', 'Political discussions, current events, and world news', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Sports', 'Sports news, scores, fan discussions, and athletic events', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Entertainment', 'Movies, TV shows, music, celebrity news, and pop culture', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Health & Fitness', 'Wellness, exercise, nutrition, and healthy living tips', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Food & Cooking', 'Recipes, restaurants, culinary adventures, and cooking techniques', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Travel', 'Travel tips, destinations, experiences, and adventure stories', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Photography', 'Photo sharing, photography techniques, and visual arts', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Art & Design', 'Creative works, design discussions, and artistic inspiration', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Books & Literature', 'Book reviews, literary discussions, and reading recommendations', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Education', 'Learning resources, academic discussions, and educational content', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Career & Jobs', 'Professional development, job market, and career advice', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Finance & Investing', 'Investment advice, budgeting, financial planning, and market discussions', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('DIY & Crafts', 'Do-it-yourself projects, crafting ideas, and maker culture', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Pets & Animals', 'Pet care, animal discussions, and wildlife appreciation', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Off-Topic', 'Random discussions, memes, and conversations that don''t fit elsewhere', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Initialize board stats for all boards
+INSERT INTO board_stats (board_id, thread_count, post_count, updated_at)
+SELECT 
+    board_id, 
+    0 as thread_count, 
+    0 as post_count,
+    CURRENT_TIMESTAMP as updated_at
+FROM boards;
+
+-- Add some board moderators (assign random active users as moderators to some boards)
+INSERT INTO board_moderators (board_id, user_id, assigned_by, assigned_at)
+SELECT 
+    b.board_id,
+    -- Assign users 2-10 as potential moderators (excluding the main admin and banned users)
+    2 + (ABS(RANDOM()) % 9) as user_id,
+    1 as assigned_by, -- Admin assigns them
+    CURRENT_TIMESTAMP as assigned_at
+FROM boards b
+WHERE ABS(RANDOM()) % 3 = 0 -- About 1/3 of boards get additional moderators
+ORDER BY b.board_id;
+
+-- Add some additional moderators for popular boards (like General Discussion and Technology)
+INSERT OR IGNORE INTO board_moderators (board_id, user_id, assigned_by, assigned_at)
+VALUES 
+    (1, 2, 1, CURRENT_TIMESTAMP), -- General Discussion gets user 2 as moderator
+    (1, 3, 1, CURRENT_TIMESTAMP), -- General Discussion gets user 3 as moderator
+    (2, 4, 1, CURRENT_TIMESTAMP), -- Technology gets user 4 as moderator
+    (3, 5, 1, CURRENT_TIMESTAMP), -- Programming gets user 5 as moderator
+    (4, 6, 1, CURRENT_TIMESTAMP); -- Gaming gets user 6 as moderator
+
+-- Create some content filters for boards
+INSERT INTO content_filters (
+    filter_name,
+    filter_type,
+    pattern,
+    action,
+    severity,
+    is_active,
+    created_by,
+    created_at,
+    updated_at
+)
+VALUES 
+    ('Spam Keywords', 'keyword', 'spam|scam|bitcoin|crypto|investment|make money fast', 'flag', 2, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('Profanity Filter', 'regex', '\b(fuck|shit|damn|hell)\b', 'moderate', 1, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('URL Spam', 'regex', 'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', 'review', 1, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+    ('ALL CAPS', 'regex', '[A-Z]{10,}', 'warn', 1, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+
+-- Log board creation in security audit
+INSERT INTO security_audit_log (
+    user_id,
+    event_type,
+    ip_address,
+    user_agent,
+    event_data,
+    timestamp
+)
+SELECT 
+    1 as user_id, -- Admin created all boards
+    'board_created' as event_type,
+    '127.0.0.1' as ip_address,
+    'Forum Setup Script' as user_agent,
+    '{"board_id": ' || board_id || ', "board_name": "' || name || '"}' as event_data,
+    strftime('%s', 'now') as timestamp
+FROM boards;
+
+-- Display summary of created boards
+SELECT 'Board Creation Summary:' as info;
+
+SELECT 
+    'Total Boards Created' as category,
+    COUNT(*) as count
+FROM boards
+
+UNION ALL
+
+SELECT 
+    'Boards with Moderators' as category,
+    COUNT(DISTINCT board_id) as count
+FROM board_moderators
+
+UNION ALL
+
+SELECT 
+    'Total Moderator Assignments' as category,
+    COUNT(*) as count
+FROM board_moderators
+
+UNION ALL
+
+SELECT 
+    'Content Filters Created' as category,
+    COUNT(*) as count
+FROM content_filters;
+
+-- Show all created boards
+SELECT 'Created Boards:' as info;
+
+SELECT 
+    board_id,
+    name,
+    SUBSTR(description, 1, 50) || '...' as description_preview,
+    creator_id,
+    datetime(created_at) as created_at
+FROM boards
+ORDER BY board_id;
+
+-- Show board moderator assignments
+SELECT 'Board Moderators:' as info;
+
+SELECT 
+    b.name as board_name,
+    u.username as moderator,
+    datetime(bm.assigned_at) as assigned_at
+FROM board_moderators bm
+JOIN boards b ON bm.board_id = b.board_id
+JOIN users u ON bm.user_id = u.user_id
+ORDER BY b.board_id, u.username;
+
+-- Show content filters
+SELECT 'Content Filters:' as info;
+
+SELECT 
+    filter_name,
+    filter_type,
+    action,
+    severity,
+    is_active
+FROM content_filters
+ORDER BY severity DESC, filter_name;

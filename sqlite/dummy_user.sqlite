@@ -1,0 +1,217 @@
+-- Create 100 Test Users Script
+-- This script creates 100 users: 1 admin, 5 banned users, and 94 regular users
+-- Run this after setting up your database schema
+
+-- Enable foreign key constraints
+PRAGMA foreign_keys = ON;
+
+-- Create a temporary sequence table for generating user IDs
+CREATE TEMPORARY TABLE IF NOT EXISTS user_seq AS 
+WITH RECURSIVE generate_series(value) AS (
+  SELECT 1
+  UNION ALL
+  SELECT value + 1 FROM generate_series
+  WHERE value < 100
+)
+SELECT value FROM generate_series;
+
+-- Insert 100 users with varied profiles
+INSERT INTO users (
+    username, 
+    email, 
+    password_hash, 
+    password_salt, 
+    password_changed_at,
+    is_admin,
+    is_banned,
+    email_verified,
+    join_date,
+    last_activity,
+    post_count,
+    avatar_url,
+    failed_login_attempts,
+    last_login_ip
+) 
+SELECT 
+    'testuser' || printf('%03d', us.value) as username,
+    'testuser' || printf('%03d', us.value) || '@example.com' as email,
+    '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LeHtWRdA5N7BDJfQa' as password_hash, -- "password123"
+    'salt' || printf('%08d', us.value) as password_salt,
+    1704067200 + (us.value * 3600) as password_changed_at, -- Staggered over time
+    -- Make user 1 an admin
+    CASE WHEN us.value = 1 THEN 1 ELSE 0 END as is_admin,
+    -- Make users 96-100 banned
+    CASE WHEN us.value BETWEEN 96 AND 100 THEN 1 ELSE 0 END as is_banned,
+    -- 90% of users have verified email
+    CASE WHEN us.value % 10 != 0 THEN 1 ELSE 0 END as email_verified,
+    -- Join dates spread over the last year
+    1704067200 + (us.value * 86400) as join_date, -- One user per day
+    -- Last activity spread over the last 30 days (more recent = more active)
+    1735689600 - (ABS(RANDOM()) % 2592000) as last_activity,
+    0 as post_count, -- Will be updated by triggers when posts are created
+    'https://api.dicebear.com/7.x/avataaars/svg?seed=user' || us.value as avatar_url,
+    -- Some users have failed login attempts
+    CASE 
+        WHEN us.value % 20 = 0 THEN 1 + (ABS(RANDOM()) % 3)
+        ELSE 0 
+    END as failed_login_attempts,
+    -- Random IP addresses for last login
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) as last_login_ip
+FROM user_seq us;
+
+-- Create user preferences for all users
+INSERT INTO user_preferences (
+    user_id,
+    email_notifications,
+    theme,
+    timezone,
+    posts_per_page,
+    show_avatars,
+    show_signatures
+)
+SELECT 
+    u.user_id,
+    CASE WHEN ABS(RANDOM()) % 4 = 0 THEN 0 ELSE 1 END as email_notifications,
+    CASE (ABS(RANDOM()) % 3)
+        WHEN 0 THEN 'default'
+        WHEN 1 THEN 'dark'
+        ELSE 'light'
+    END as theme,
+    CASE (ABS(RANDOM()) % 5)
+        WHEN 0 THEN 'America/New_York'
+        WHEN 1 THEN 'Europe/London'
+        WHEN 2 THEN 'Asia/Tokyo'
+        WHEN 3 THEN 'Australia/Sydney'
+        ELSE 'UTC'
+    END as timezone,
+    CASE (ABS(RANDOM()) % 3)
+        WHEN 0 THEN 10
+        WHEN 1 THEN 20
+        ELSE 50
+    END as posts_per_page,
+    CASE WHEN ABS(RANDOM()) % 10 = 0 THEN 0 ELSE 1 END as show_avatars,
+    CASE WHEN ABS(RANDOM()) % 5 = 0 THEN 0 ELSE 1 END as show_signatures
+FROM users u
+WHERE u.username LIKE 'testuser%';
+
+-- Create some user sessions for recently active users
+INSERT INTO user_sessions (
+    session_id,
+    user_id,
+    ip_address,
+    user_agent,
+    created_at,
+    expires_at,
+    last_activity,
+    is_active
+)
+SELECT 
+    'session_' || u.user_id || '_' || strftime('%s', 'now') as session_id,
+    u.user_id,
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) || '.' || 
+    (1 + (ABS(RANDOM()) % 254)) as ip_address,
+    CASE (ABS(RANDOM()) % 4)
+        WHEN 0 THEN 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        WHEN 1 THEN 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15'
+        WHEN 2 THEN 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ELSE 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+    END as user_agent,
+    u.last_activity - (ABS(RANDOM()) % 3600) as created_at, -- Session started before last activity
+    u.last_activity + 86400 as expires_at, -- Session expires 24 hours after last activity
+    u.last_activity as last_activity,
+    CASE WHEN ABS(RANDOM()) % 3 = 0 THEN 1 ELSE 0 END as is_active -- About 1/3 are still active
+FROM users u
+WHERE u.username LIKE 'testuser%'
+AND u.last_activity > (strftime('%s', 'now') - 604800) -- Only users active in last week
+AND ABS(RANDOM()) % 2 = 0; -- Only about half get sessions
+
+-- Add some security audit log entries for user creation
+INSERT INTO security_audit_log (
+    user_id,
+    event_type,
+    ip_address,
+    user_agent,
+    event_data,
+    timestamp
+)
+SELECT 
+    u.user_id,
+    'user_registered' as event_type,
+    u.last_login_ip as ip_address,
+    'Mozilla/5.0 (Registration Script)' as user_agent,
+    '{"registration_method": "batch_script", "email_verified": ' || u.email_verified || '}' as event_data,
+    u.join_date as timestamp
+FROM users u
+WHERE u.username LIKE 'testuser%';
+
+-- Clean up temporary table
+DROP TABLE user_seq;
+
+-- Display summary of created users
+SELECT 'User Creation Summary:' as info;
+
+SELECT 
+    'Total Users Created' as category,
+    COUNT(*) as count
+FROM users 
+WHERE username LIKE 'testuser%'
+
+UNION ALL
+
+SELECT 
+    'Admin Users' as category,
+    COUNT(*) as count
+FROM users 
+WHERE username LIKE 'testuser%' AND is_admin = 1
+
+UNION ALL
+
+SELECT 
+    'Banned Users' as category,
+    COUNT(*) as count
+FROM users 
+WHERE username LIKE 'testuser%' AND is_banned = 1
+
+UNION ALL
+
+SELECT 
+    'Email Verified Users' as category,
+    COUNT(*) as count
+FROM users 
+WHERE username LIKE 'testuser%' AND email_verified = 1
+
+UNION ALL
+
+SELECT 
+    'Users with Sessions' as category,
+    COUNT(DISTINCT user_id) as count
+FROM user_sessions 
+WHERE user_id IN (SELECT user_id FROM users WHERE username LIKE 'testuser%');
+
+-- Show sample of created users
+SELECT 'Sample Users:' as info;
+
+SELECT 
+    username,
+    email,
+    is_admin,
+    is_banned,
+    email_verified,
+    datetime(join_date, 'unixepoch') as join_date_readable,
+    datetime(last_activity, 'unixepoch') as last_activity_readable
+FROM users 
+WHERE username LIKE 'testuser%'
+ORDER BY user_id 
+LIMIT 10;
+
+-- Show admin and banned users specifically
+SELECT 'Admin Users:' as info;
+SELECT username, email FROM users WHERE username LIKE 'testuser%' AND is_admin = 1;
+
+SELECT 'Banned Users:' as info;
+SELECT username, email FROM users WHERE username LIKE 'testuser%' AND is_banned = 1;

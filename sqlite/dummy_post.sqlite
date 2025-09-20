@@ -1,0 +1,105 @@
+-- Create Thousands of Posts Script
+-- Generates hundreds of threads with thousands of posts using existing users and boards
+-- Fixed to ensure all threads get posts and content wraps properly
+
+PRAGMA foreign_keys = ON;
+
+-- Create sequence table for generation
+CREATE TEMP TABLE seq AS 
+WITH RECURSIVE s(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM s WHERE i < 25000)
+SELECT i FROM s;
+
+-- Create threads (25 per board = 500 threads)
+INSERT INTO threads (board_id, user_id, title, timestamp, last_post_at, last_post_user_id)
+SELECT 
+    ((s.i - 1) / 25) + 1 as board_id,
+    1 + (ABS(RANDOM()) % 100) as user_id,
+    'Thread ' || s.i || ' Discussion Topic' as title,
+    1704067200 + (s.i * 3600) as timestamp,
+    1704067200 + (s.i * 3600) as last_post_at,
+    1 + (ABS(RANDOM()) % 100) as last_post_user_id
+FROM seq s
+WHERE s.i <= 500;
+
+-- Create posts with variable thread sizes (targeting 20,000 total posts)
+-- Step 1: Create initial post for every thread (500 posts)
+INSERT INTO posts (thread_id, user_id, content, timestamp)
+SELECT 
+    thread_id,
+    user_id as user_id,  -- Use the thread creator as the initial poster
+    'This is the original post that started this thread. ' || 
+    CASE (thread_id % 4)
+        WHEN 0 THEN 'What are your thoughts on this topic? I would love to hear different perspectives from the community.'
+        WHEN 1 THEN 'I have been thinking about this issue and wanted to get some input from others who might have experience.'
+        WHEN 2 THEN 'This is an important discussion that I think we should all be having. Please share your opinions and experiences.'
+        ELSE 'Looking forward to a productive discussion about this topic. What do you all think?'
+    END as content,
+    timestamp as timestamp  -- Use the thread creation time
+FROM threads;
+
+-- Step 2: Create additional reply posts (19,500 more posts)
+-- Use weighted distribution: some threads get more replies than others
+INSERT INTO posts (thread_id, user_id, content, timestamp)
+SELECT 
+    -- Weighted distribution for replies
+    CASE 
+        WHEN s.i % 100 < 60 THEN 1 + ((s.i - 1) % 400)  -- 60% of replies go to first 400 threads
+        ELSE 401 + ((s.i - 1) % 100)  -- 40% of replies go to last 100 threads
+    END as thread_id,
+    1 + (ABS(RANDOM()) % 100) as user_id,
+    CASE (ABS(RANDOM()) % 4)
+        WHEN 0 THEN 'Short reply about the topic. Thanks for sharing this information with everyone.'
+        WHEN 1 THEN 'This is a medium length reply discussing various aspects of the topic. I think this approach has merit and could work well in practice. What do others think about this idea?'
+        WHEN 2 THEN 'This is a longer reply that goes into more detail about the subject matter. I have been thinking about this topic for quite some time and wanted to share my perspective based on personal experience. There are several important factors to consider when approaching this issue, including the practical implications and potential long term consequences.'
+        ELSE 'Medium reply with some thoughts and questions. Has anyone else encountered similar challenges? I would appreciate any advice or suggestions from the community.'
+    END as content,
+    1704067200 + (s.i * 300) as timestamp  -- Replies every 5 minutes after thread creation
+FROM seq s
+WHERE s.i <= 19500;
+
+-- Update thread statistics (reply_count = total posts - 1 for original post)
+UPDATE threads SET 
+    reply_count = (SELECT COUNT(*) - 1 FROM posts WHERE posts.thread_id = threads.thread_id),
+    last_post_at = (SELECT MAX(timestamp) FROM posts WHERE posts.thread_id = threads.thread_id),
+    last_post_user_id = (SELECT user_id FROM posts WHERE posts.thread_id = threads.thread_id ORDER BY timestamp DESC LIMIT 1);
+
+-- Update board statistics  
+UPDATE board_stats SET
+    thread_count = (SELECT COUNT(*) FROM threads WHERE threads.board_id = board_stats.board_id),
+    post_count = (SELECT COUNT(*) FROM posts p JOIN threads t ON p.thread_id = t.thread_id WHERE t.board_id = board_stats.board_id),
+    last_post_at = (SELECT MAX(p.timestamp) FROM posts p JOIN threads t ON p.thread_id = t.thread_id WHERE t.board_id = board_stats.board_id),
+    last_post_user_id = (SELECT p.user_id FROM posts p JOIN threads t ON p.thread_id = t.thread_id WHERE t.board_id = board_stats.board_id ORDER BY p.timestamp DESC LIMIT 1);
+
+-- Update user post counts
+UPDATE users SET post_count = (SELECT COUNT(*) FROM posts WHERE posts.user_id = users.user_id)
+WHERE username LIKE 'testuser%';
+
+DROP TABLE seq;
+
+-- Show summary
+SELECT 'Content Generation Complete!' as status;
+
+SELECT 'Summary:' as info;
+SELECT 'Threads' as type, COUNT(*) as count FROM threads
+UNION ALL SELECT 'Posts' as type, COUNT(*) as count FROM posts
+UNION ALL SELECT 'Avg Posts per Thread' as type, CAST(COUNT(p.post_id) AS REAL) / COUNT(DISTINCT t.thread_id) as count 
+FROM threads t LEFT JOIN posts p ON t.thread_id = p.thread_id;
+
+SELECT 'Top 5 Boards by Posts:' as info;
+SELECT b.name, bs.thread_count, bs.post_count 
+FROM board_stats bs JOIN boards b ON bs.board_id = b.board_id 
+ORDER BY bs.post_count DESC LIMIT 5;
+
+SELECT 'Sample Thread Post Counts (showing range):' as info;
+SELECT 
+    thread_id, 
+    reply_count,
+    CASE 
+        WHEN reply_count < 10 THEN 'Low activity'
+        WHEN reply_count < 30 THEN 'Medium activity'
+        ELSE 'High activity'
+    END as activity_level
+FROM threads 
+WHERE reply_count > 0
+ORDER BY reply_count 
+LIMIT 15;
