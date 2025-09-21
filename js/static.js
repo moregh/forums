@@ -105,10 +105,18 @@ const Templates = {
                 user_id: threadInfo.user_id || threadInfo.author_id || 0,
                 username: threadInfo.username || threadInfo.author_name || 'Unknown',
                 timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
-                board_id: threadInfo.board_id || 0
+                board_id: threadInfo.board_id || 0,
+                board_name: threadInfo.board_name || 'Unknown Board'
             };
 
             const threadHTML = `
+                <div class="breadcrumb-nav">
+                    <a href="/" onclick="forum.router.navigate('/'); return false;">📋 Forum</a>
+                    <span class="breadcrumb-separator">›</span>
+                    <a href="/boards/${safeThreadInfo.board_id}" onclick="forum.router.navigate('/boards/${safeThreadInfo.board_id}'); return false;">${UIComponents.escapeHtml(safeThreadInfo.board_name)}</a>
+                    <span class="breadcrumb-separator">›</span>
+                    <span class="breadcrumb-current">${UIComponents.escapeHtml(safeThreadInfo.title)}</span>
+                </div>
                 <div class="page-header">
                     <div>
                         <h1>${UIComponents.escapeHtml(safeThreadInfo.title)}</h1>
@@ -120,6 +128,9 @@ const Templates = {
                         </div>
                     </div>
                     <div class="page-actions">
+                        <button onclick="forum.router.navigate('/boards/${safeThreadInfo.board_id}')" class="btn-secondary">
+                            ← Back to ${UIComponents.escapeHtml(safeThreadInfo.board_name)}
+                        </button>
                         ${currentUser && !safeThreadInfo.locked ? `<button onclick="forum.showReplyForm(${safeThreadInfo.thread_id})" class="btn-primary">Reply</button>` : ''}
                         ${UIComponents.canModerateThread(currentUser) ? `
                             <div class="admin-actions">

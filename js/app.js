@@ -87,12 +87,16 @@ class ForumApp {
     }
     async navigateToThread(threadId, threadData = null) {
         if (this.navigationLock) {
+            console.log('Navigation locked, ignoring click');
             return;
         }
 
         this.navigationLock = true;
 
         try {
+            console.log('Navigating to thread:', threadId);
+            
+            // Store thread data temporarily if provided
             if (threadData) {
                 this.tempThreadData = threadData;
             }
@@ -104,9 +108,10 @@ class ForumApp {
             console.error('Navigation error:', error);
             this.state.setState({ error: error.message });
         } finally {
+            // Clear navigation lock after a short delay to prevent rapid clicks
             setTimeout(() => {
                 this.navigationLock = false;
-            }, 50);
+            }, 100); // Reduced from 50ms to 100ms for better debouncing
         }
     }
 
@@ -149,6 +154,7 @@ class ForumApp {
                     this.api.getThreadInfo(threadId)
                 ]);
             }
+            
             if (!threadInfo || !threadInfo.thread_id) {
                 throw new Error('Invalid thread info received from API');
             }
@@ -159,6 +165,13 @@ class ForumApp {
             }
 
             const user = this.state.getState().user;
+            const { boards } = this.state.getState();
+
+            // Get board information
+            let boardInfo = null;
+            if (threadInfo.board_id && boards && boards.length > 0) {
+                boardInfo = boards.find(b => b.board_id == threadInfo.board_id);
+            }
 
             const totalPosts = Math.max((threadInfo.reply_count || 0) + 1, posts.length);
             const postsPerPage = 20;
@@ -175,10 +188,12 @@ class ForumApp {
                 username: threadInfo.username || threadInfo.author_name || 'Unknown',
                 timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
                 board_id: threadInfo.board_id || 0,
+                board_name: boardInfo ? boardInfo.name : 'Unknown Board',
                 last_post_at: threadInfo.last_post_at || null,
                 last_post_username: threadInfo.last_post_username || null
             };
 
+            const content = document.getElementById('content');
             if (!content) {
                 throw new Error('Content element not found');
             }
@@ -229,19 +244,11 @@ class ForumApp {
                 e.stopPropagation();
 
                 const threadId = threadRow.dataset.threadId;
-                const threadData = threadRow.dataset.threadData;
 
-                if (threadId) {
-                    let parsedData = null;
-                    try {
-                        if (threadData) {
-                            parsedData = JSON.parse(threadData);
-                        }
-                    } catch (err) {
-                        console.warn('Failed to parse thread data:', err);
-                    }
-
-                    this.navigateToThread(parseInt(threadId), parsedData);
+                if (threadId && !this.navigationLock) {
+                    // Instead of parsing JSON from data attribute, just use the thread ID
+                    // The thread data will be fetched from the API if needed
+                    this.navigateToThread(parseInt(threadId), null);
                 }
             }
         });

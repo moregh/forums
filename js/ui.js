@@ -127,7 +127,6 @@ class UIComponents {
         return pagination;
     }
 
-    // In renderThreads function, replace the onclick with data attributes:
     static renderThreads(threads, currentUser) {
         if (!threads || threads.length === 0) {
             return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
@@ -150,8 +149,7 @@ class UIComponents {
             
             return `
                 <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
-                    data-thread-id="${safeThread.thread_id}"
-                    data-thread-data="${UIComponents.escapeHtml(JSON.stringify(safeThread))}">
+                     data-thread-id="${safeThread.thread_id}">
                     <div class="thread-info">
                         <h4>${UIComponents.escapeHtml(safeThread.title)}</h4>
                         <span class="thread-meta">
@@ -189,6 +187,7 @@ class UIComponents {
             `;
         }).join('');
     }
+    
     static renderBoards(boards) {
     if (!boards || boards.length === 0) {
         return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
