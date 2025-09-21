@@ -3,11 +3,11 @@ class ForumApp {
         this.api = new ForumAPI();
         this.state = new ForumState();
         this.router = new Router();
-        this.navigationLock = false; 
+        this.navigationLock = false;
         this.tempThreadData = null;
         this.setupRoutes();
         this.setupEventListeners();
-        this.setupEventDelegation(); 
+        this.setupEventDelegation();
         this.init();
     }
 
@@ -48,6 +48,10 @@ class ForumApp {
         await this.loadBoards();
         this.router.handleRoute();
     }
+    async hashPasswordForServer(password, username) {
+        const hash = CryptoJS.SHA256(password + username.toLowerCase());
+        return hash.toString(CryptoJS.enc.Hex);
+    }
 
     async loadBoards() {
         try {
@@ -62,8 +66,8 @@ class ForumApp {
     updateNavigation(user) {
         const navElement = document.querySelector('#navigation .nav-right');
         if (!navElement) return;
-        navElement.innerHTML = user 
-            ? Templates.navigationLoggedIn(user) 
+        navElement.innerHTML = user
+            ? Templates.navigationLoggedIn(user)
             : Templates.navigationLoggedOut();
     }
 
@@ -81,35 +85,30 @@ class ForumApp {
     showRegister() {
         document.getElementById('content').innerHTML = Templates.register();
     }
-async navigateToThread(threadId, threadData = null) {
-    if (this.navigationLock) {
-        console.log('Navigation locked, ignoring click');
-        return;
-    }
-    
-    this.navigationLock = true;
-    
-    try {
-        console.log('Navigating to thread:', threadId, threadData);
-        
-        // Store threadData temporarily if provided
-        if (threadData) {
-            this.tempThreadData = threadData;
+    async navigateToThread(threadId, threadData = null) {
+        if (this.navigationLock) {
+            return;
         }
-        
-        // Only use router navigation - don't call showThread directly
-        this.router.navigate(`/threads/${threadId}`, true);
-        
-    } catch (error) {
-        UIComponents.showError(`Navigation error: ${error}`);
-        console.error('Navigation error:', error);
-        this.state.setState({ error: error.message });
-    } finally {
-        setTimeout(() => {
-            this.navigationLock = false;
-        }, 50);
+
+        this.navigationLock = true;
+
+        try {
+            if (threadData) {
+                this.tempThreadData = threadData;
+            }
+
+            this.router.navigate(`/threads/${threadId}`, true);
+
+        } catch (error) {
+            UIComponents.showError(`Navigation error: ${error}`);
+            console.error('Navigation error:', error);
+            this.state.setState({ error: error.message });
+        } finally {
+            setTimeout(() => {
+                this.navigationLock = false;
+            }, 50);
+        }
     }
-}
 
     async showBoard(boardId, page = 1) {
         try {
@@ -124,114 +123,89 @@ async navigateToThread(threadId, threadData = null) {
             document.getElementById('content').innerHTML =
                 Templates.board(board, threads, user, page, totalPages);
 
-            this.state.setState({ 
-                currentBoard: board, 
-                threads, 
+            this.state.setState({
+                currentBoard: board,
+                threads,
                 currentPage: page,
                 totalPages,
-                loading: false 
+                loading: false
             });
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });
         }
     }
 
-    // Replace the entire showThread method in app.js with this version
-// This eliminates ALL redundant API calls and fixes the flickering
+    async showThread(threadId, page = 1, threadData = null) {
+        try {
+            this.state.setState({ loading: true, error: null });
+            let posts, threadInfo;
 
-async showThread(threadId, page = 1, threadData = null) {
-    try {
-        this.state.setState({ loading: true, error: null });
-        
-        console.log('Loading thread:', threadId, 'page:', page);
-        
-        let posts, threadInfo;
-        
-        if (threadData) {
-            console.log('Using provided thread data:', threadData);
-            posts = await this.api.getPosts(threadId, page);
-            threadInfo = threadData;
-        } else {
-            console.log('Fetching thread data from API');
-            [posts, threadInfo] = await Promise.all([
-                this.api.getPosts(threadId, page),
-                this.api.getThreadInfo(threadId)
-            ]);
-        }
-        
-        console.log('Posts loaded:', posts?.length || 0, posts);
-        console.log('Thread info loaded:', threadInfo);
-        
-        // Validate we have the minimum required data
-        if (!threadInfo || !threadInfo.thread_id) {
-            throw new Error('Invalid thread info received from API');
-        }
-        
-        if (!Array.isArray(posts)) {
-            console.warn('Posts is not an array, converting:', posts);
-            posts = [];
-        }
-        
-        const user = this.state.getState().user;
-        
-        // Calculate pagination properly
-        const totalPosts = Math.max((threadInfo.reply_count || 0) + 1, posts.length);
-        const postsPerPage = 20;
-        const totalPages = Math.ceil(totalPosts / postsPerPage);
-        
-        console.log('Pagination calc:', { totalPosts, totalPages, currentPage: page });
-        
-        // Ensure we have clean thread data for template
-        const cleanThreadInfo = {
-            thread_id: parseInt(threadId),
-            title: threadInfo.title || `Thread ${threadId}`,
-            locked: Boolean(threadInfo.locked),
-            sticky: Boolean(threadInfo.sticky),
-            reply_count: threadInfo.reply_count || 0,
-            view_count: threadInfo.view_count || 0,
-            user_id: threadInfo.user_id || threadInfo.author_id || 0,
-            username: threadInfo.username || threadInfo.author_name || 'Unknown',
-            timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
-            board_id: threadInfo.board_id || 0,
-            last_post_at: threadInfo.last_post_at || null,
-            last_post_username: threadInfo.last_post_username || null
-        };
-        
-        console.log('Clean thread info:', cleanThreadInfo);
-        
-        // Generate and set content
-        const content = document.getElementById('content');
-        if (!content) {
-            throw new Error('Content element not found');
-        }
-        
-        const threadHTML = Templates.thread(cleanThreadInfo, posts, user, page, totalPages);
-        
-        if (!threadHTML || threadHTML.includes('Error')) {
-            throw new Error('Template rendering failed');
-        }
-        
-        content.innerHTML = threadHTML;
-        console.log('Thread content set successfully');
+            if (threadData) {
+                posts = await this.api.getPosts(threadId, page);
+                threadInfo = threadData;
+            } else {
+                [posts, threadInfo] = await Promise.all([
+                    this.api.getPosts(threadId, page),
+                    this.api.getThreadInfo(threadId)
+                ]);
+            }
+            if (!threadInfo || !threadInfo.thread_id) {
+                throw new Error('Invalid thread info received from API');
+            }
 
-        // Update state
-        this.state.setState({ 
-            currentThread: cleanThreadInfo, 
-            posts: posts, 
-            currentPage: page,
-            totalPages: totalPages,
-            loading: false 
-        });
-        
-        console.log('Thread state updated successfully');
-        
-    } catch (error) {
-        UIComponents.showError(`Error in showThread: ${error}`);
-        console.error('Error in showThread:', error);
-        
-        const content = document.getElementById('content');
-        if (content) {
-            content.innerHTML = `
+            if (!Array.isArray(posts)) {
+                console.warn('Posts is not an array, converting:', posts);
+                posts = [];
+            }
+
+            const user = this.state.getState().user;
+
+            const totalPosts = Math.max((threadInfo.reply_count || 0) + 1, posts.length);
+            const postsPerPage = 20;
+            const totalPages = Math.ceil(totalPosts / postsPerPage);
+
+            const cleanThreadInfo = {
+                thread_id: parseInt(threadId),
+                title: threadInfo.title || `Thread ${threadId}`,
+                locked: Boolean(threadInfo.locked),
+                sticky: Boolean(threadInfo.sticky),
+                reply_count: threadInfo.reply_count || 0,
+                view_count: threadInfo.view_count || 0,
+                user_id: threadInfo.user_id || threadInfo.author_id || 0,
+                username: threadInfo.username || threadInfo.author_name || 'Unknown',
+                timestamp: threadInfo.timestamp || threadInfo.created_at || Date.now() / 1000,
+                board_id: threadInfo.board_id || 0,
+                last_post_at: threadInfo.last_post_at || null,
+                last_post_username: threadInfo.last_post_username || null
+            };
+
+            if (!content) {
+                throw new Error('Content element not found');
+            }
+
+            const threadHTML = Templates.thread(cleanThreadInfo, posts, user, page, totalPages);
+
+            if (!threadHTML || threadHTML.includes('Error')) {
+                throw new Error('Template rendering failed');
+            }
+
+            content.innerHTML = threadHTML;
+
+            this.state.setState({
+                currentThread: cleanThreadInfo,
+                posts: posts,
+                currentPage: page,
+                totalPages: totalPages,
+                loading: false
+            });
+
+        } catch (error) {
+            UIComponents.showError(`Error in showThread: ${error}`);
+            console.error('Error in showThread:', error);
+
+            const content = document.getElementById('content');
+            if (content) {
+                content.innerHTML = `
                 <div class="error-state">
                     <h3>Error Loading Thread</h3>
                     <p>Failed to load thread: ${error.message}</p>
@@ -239,40 +213,39 @@ async showThread(threadId, page = 1, threadData = null) {
                     <button onclick="location.reload()" class="btn-secondary">Retry</button>
                 </div>
             `;
+            }
+
+            this.state.setState({
+                error: `Failed to load thread: ${error.message}`,
+                loading: false
+            });
         }
-        
-        this.state.setState({ 
-            error: `Failed to load thread: ${error.message}`, 
-            loading: false 
+    }
+    setupEventDelegation() {
+        document.addEventListener('click', (e) => {
+            const threadRow = e.target.closest('.thread-row[data-thread-id]');
+            if (threadRow && !e.target.closest('.thread-actions')) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const threadId = threadRow.dataset.threadId;
+                const threadData = threadRow.dataset.threadData;
+
+                if (threadId) {
+                    let parsedData = null;
+                    try {
+                        if (threadData) {
+                            parsedData = JSON.parse(threadData);
+                        }
+                    } catch (err) {
+                        console.warn('Failed to parse thread data:', err);
+                    }
+
+                    this.navigateToThread(parseInt(threadId), parsedData);
+                }
+            }
         });
     }
-}
-    setupEventDelegation() {
-    // Handle thread clicks with event delegation
-    document.addEventListener('click', (e) => {
-        const threadRow = e.target.closest('.thread-row[data-thread-id]');
-        if (threadRow && !e.target.closest('.thread-actions')) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const threadId = threadRow.dataset.threadId;
-            const threadData = threadRow.dataset.threadData;
-            
-            if (threadId) {
-                let parsedData = null;
-                try {
-                    if (threadData) {
-                        parsedData = JSON.parse(threadData);
-                    }
-                } catch (err) {
-                    console.warn('Failed to parse thread data:', err);
-                }
-                
-                this.navigateToThread(parseInt(threadId), parsedData);
-            }
-        }
-    });
-}
     // Event handlers
     async handleLogin(event) {
         event.preventDefault();
@@ -282,7 +255,8 @@ async showThread(threadId, page = 1, threadData = null) {
 
         try {
             this.state.setState({ loading: true, error: null });
-            await this.api.login(username, password);
+            const hashedPassword = await this.hashPasswordForServer(password, username);
+            await this.api.login(username, hashedPassword);
             this.state.setState({ user: this.api.user, loading: false });
             UIComponents.showSuccess('Login successful!');
             this.router.navigate('/');
@@ -300,7 +274,8 @@ async showThread(threadId, page = 1, threadData = null) {
 
         try {
             this.state.setState({ loading: true, error: null });
-            await this.api.register(username, email, password);
+            const hashedPassword = await this.hashPasswordForServer(password, username);
+            await this.api.register(username, email, hashedPassword);
             this.state.setState({ user: this.api.user, loading: false });
             UIComponents.showSuccess('Registration successful!');
             this.router.navigate('/');
@@ -400,9 +375,9 @@ async showThread(threadId, page = 1, threadData = null) {
         const reason = prompt('Reason for ban (required):');
         if (reason === null) {
             UIComponents.showInfo('Cancelled ban user')
-            return; // User cancelled
+            return;
         }
-        
+
         try {
             await this.api.banUser(userId, reason);
             UIComponents.showSuccess('User banned successfully!');
@@ -444,24 +419,23 @@ async showThread(threadId, page = 1, threadData = null) {
         }
     }
     async showAdmin() {
-    const currentUser = this.state.getState().user;
-    if (!currentUser || !currentUser.is_admin) {
-        this.router.navigate('/');
-        return;
-    }
-    
-    try {
-        this.state.setState({ loading: true, error: null });
-        
-        // Fetch admin data - users, stats, moderation log
-        const [users, stats, moderationLog] = await Promise.all([
-            this.api.request('/api/admin/users?page=1&per_page=50').catch(() => []),
-            this.api.request('/api/stats').catch(() => ({})),
-            this.api.request('/api/admin/moderation-log?page=1&per_page=20').catch(() => [])
-        ]);
-        
-        const content = document.getElementById('content');
-        content.innerHTML = `
+        const currentUser = this.state.getState().user;
+        if (!currentUser || !currentUser.is_admin) {
+            this.router.navigate('/');
+            return;
+        }
+
+        try {
+            this.state.setState({ loading: true, error: null });
+
+            const [users, stats, moderationLog] = await Promise.all([
+                this.api.request('/api/admin/users?page=1&per_page=50').catch(() => []),
+                this.api.request('/api/stats').catch(() => ({})),
+                this.api.request('/api/admin/moderation-log?page=1&per_page=20').catch(() => [])
+            ]);
+
+            const content = document.getElementById('content');
+            content.innerHTML = `
             <div class="page-header">
                 <h1>Admin Panel</h1>
             </div>
@@ -504,22 +478,22 @@ async showThread(threadId, page = 1, threadData = null) {
                 </div>
             </div>
         `;
-        
-        this.state.setState({ loading: false });
-        
-    } catch (error) {
-        UIComponents.showError(`Error loading admin panel: ${error}`);
-        console.error('Error loading admin panel:', error);
-        this.state.setState({ error: error.message, loading: false });
-    }
-}
 
-renderUserList(users) {
-    if (!Array.isArray(users) || users.length === 0) {
-        return '<p>No users found.</p>';
+            this.state.setState({ loading: false });
+
+        } catch (error) {
+            UIComponents.showError(`Error loading admin panel: ${error}`);
+            console.error('Error loading admin panel:', error);
+            this.state.setState({ error: error.message, loading: false });
+        }
     }
-    
-    return `
+
+    renderUserList(users) {
+        if (!Array.isArray(users) || users.length === 0) {
+            return '<p>No users found.</p>';
+        }
+
+        return `
         <div class="user-list">
             ${users.map(user => `
                 <div class="admin-user-row" data-user-id="${user.user_id}">
@@ -550,14 +524,14 @@ renderUserList(users) {
             `).join('')}
         </div>
     `;
-}
-
-renderModerationLog(logs) {
-    if (!Array.isArray(logs) || logs.length === 0) {
-        return '<p>No recent moderation actions.</p>';
     }
-    
-    return `
+
+    renderModerationLog(logs) {
+        if (!Array.isArray(logs) || logs.length === 0) {
+            return '<p>No recent moderation actions.</p>';
+        }
+
+        return `
         <div class="moderation-entries">
             ${logs.map(log => `
                 <div class="moderation-entry">
@@ -574,7 +548,7 @@ renderModerationLog(logs) {
             `).join('')}
         </div>
     `;
-}
+    }
 
     // Modal forms
     showCreateBoardForm() {
@@ -653,7 +627,7 @@ renderModerationLog(logs) {
             UIComponents.showSuccess('Reply posted successfully!');
             event.target.closest('.modal').remove();
 
-            const totalPosts = 1; 
+            const totalPosts = 1;
             const lastPage = Math.ceil(totalPosts / 20);  // todo: get rid of magic number
             this.showThread(threadId, lastPage);
         } catch (error) {
@@ -744,7 +718,6 @@ renderModerationLog(logs) {
     }
 
     requestNotificationPermission() {
-        // Call this only in response to user action
         if ('Notification' in window && Notification.permission === 'default') {
             Notification.requestPermission();
         }
@@ -758,7 +731,7 @@ renderModerationLog(logs) {
 
         setInterval(() => {
             if (this.api.token) {
-                this.api.refreshToken().catch(() => {});
+                this.api.refreshToken().catch(() => { });
             }
         }, 25 * 60 * 1000);
     }
