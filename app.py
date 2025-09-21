@@ -25,6 +25,13 @@ def audit_action(action_type: str, target_type: str = "user"):
             request = kwargs.get('request') 
             current_user = kwargs.get('current_user')
             
+            if not request:
+                # Try to get request from args if not in kwargs
+                for arg in args:
+                    if hasattr(arg, 'client'):
+                        request = arg
+                        break
+
             if not all([user_id, request, current_user]):
                 return await func(*args, **kwargs)
             

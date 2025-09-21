@@ -111,7 +111,7 @@ class ForumApp {
             // Clear navigation lock after a short delay to prevent rapid clicks
             setTimeout(() => {
                 this.navigationLock = false;
-            }, 100); // Reduced from 50ms to 100ms for better debouncing
+            }, 250); 
         }
     }
 
@@ -631,16 +631,112 @@ class ForumApp {
         const formData = new FormData(event.target);
         const content = formData.get('content');
 
-        try {
-            await this.api.createPost(threadId, content);
-            UIComponents.showSuccess('Reply posted successfully!');
-            event.target.closest('.modal').remove();
+        // Validate content
+        if (!content || content.trim().length === 0) {
+            UIComponents.showError('Post content cannot be empty');
+            return;
+        }
 
-            const totalPosts = 1;
-            const lastPage = Math.ceil(totalPosts / 20);  // todo: get rid of magic number
-            this.showThread(threadId, lastPage);
+        if (content.length > 50000) {
+            UIComponents.showError('Post content is too long (maximum 50,000 characters)');
+            return;
+        }
+
+        try {
+            // Show loading state
+            this.state.setState({ loading: true, error: null });
+            
+            // Create the post
+            const newPost = await this.api.createPost(threadId, content);
+            
+            if (!newPost) {
+                throw new Error('Failed to create post - no response from server');
+            }
+
+            // Get current thread info to calculate proper pagination
+            const currentThread = this.state.getState().currentThread;
+            let targetPage = 1;
+
+            if (currentThread) {
+                // Calculate the page where the new post will appear
+                // Total posts = original post + existing replies + new post
+                const totalPosts = (currentThread.reply_count || 0) + 2; // +1 for original post, +1 for new post
+                const postsPerPage = 20;
+                targetPage = Math.ceil(totalPosts / postsPerPage);
+            } else {
+                // Fallback: try to get thread info from API
+                try {
+                    const threadInfo = await this.api.getThreadInfo(threadId);
+                    if (threadInfo) {
+                        const totalPosts = (threadInfo.reply_count || 0) + 2;
+                        const postsPerPage = 20;
+                        targetPage = Math.ceil(totalPosts / postsPerPage);
+                    }
+                } catch (error) {
+                    console.warn('Could not get thread info for pagination, using page 1:', error);
+                    targetPage = 1;
+                }
+            }
+
+            // Close the modal
+            const modal = event.target.closest('.modal');
+            if (modal) {
+                modal.remove();
+            }
+
+            // Clear any draft content
+            this.clearDraft(`reply_${threadId}`);
+
+            // Show success message
+            UIComponents.showSuccess('Reply posted successfully!');
+
+            // Navigate to the correct page where the new post appears
+            // Add a small delay to ensure the post is fully processed server-side
+            setTimeout(() => {
+                this.showThread(threadId, targetPage);
+                
+                // Scroll to the new post after the page loads
+                setTimeout(() => {
+                    const posts = document.querySelectorAll('.post');
+                    if (posts.length > 0) {
+                        const lastPost = posts[posts.length - 1];
+                        lastPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        
+                        // Add a subtle highlight effect to the new post
+                        lastPost.style.border = '2px solid var(--primary)';
+                        setTimeout(() => {
+                            lastPost.style.border = '1px solid var(--border)';
+                        }, 3000);
+                    }
+                }, 500);
+            }, 100);
+
         } catch (error) {
-            UIComponents.showError(error.message);
+            console.error('Error creating post:', error);
+            
+            // Show user-friendly error message
+            let errorMessage = 'Failed to create post. Please try again.';
+            
+            if (error.message) {
+                if (error.message.includes('rate limit')) {
+                    errorMessage = 'You are posting too frequently. Please wait a moment and try again.';
+                } else if (error.message.includes('locked')) {
+                    errorMessage = 'This thread is locked and cannot accept new posts.';
+                } else if (error.message.includes('not found')) {
+                    errorMessage = 'Thread not found. It may have been deleted.';
+                } else if (error.message.includes('authentication') || error.message.includes('unauthorized')) {
+                    errorMessage = 'You need to log in to post replies.';
+                    // Redirect to login if not authenticated
+                    this.router.navigate('/login');
+                    return;
+                }
+            }
+            
+            UIComponents.showError(errorMessage);
+            this.state.setState({ error: error.message, loading: false });
+        } finally {
+            // Always clear loading state
+            this.state.setState({ loading: false });
         }
     }
 
@@ -749,4 +845,13 @@ class ForumApp {
 document.addEventListener('DOMContentLoaded', () => {
     window.forum = new ForumApp();
     window.forum.initializeEnhancements();
+});
+window.addEventListener('error', (event) => {
+    console.error('Global error:', event.error);
+    UIComponents.showError('An unexpected error occurred. Please refresh the page.');
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+    UIComponents.showError('Network error. Please check your connection.');
 });

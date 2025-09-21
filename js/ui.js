@@ -72,7 +72,7 @@ class UIComponents {
             max-width: 300px;
         `;
         setTimeout(() => {
-            if (infoDiv.pinfode) {
+            if (infoDiv.parentNode) {
                 infoDiv.parentNode.removeChild(infoDiv);
             }
         }, 3000);
@@ -106,7 +106,7 @@ class UIComponents {
     }
 
     static renderPagination(currentPage, totalPages, onPageChange) {
-        if (totalPages <= 1 && currentPage === 1) return '';
+        if (totalPages <= 1) return '';
         
         let pagination = '<div class="pagination">';
         
