@@ -48,10 +48,6 @@ class ForumApp {
         await this.loadBoards();
         this.router.handleRoute();
     }
-    async hashPasswordForServer(password, username) {
-        const hash = CryptoJS.SHA256(password + username.toLowerCase());
-        return hash.toString(CryptoJS.enc.Hex);
-    }
 
     async loadBoards() {
         try {
@@ -263,8 +259,7 @@ class ForumApp {
 
         try {
             this.state.setState({ loading: true, error: null });
-            const hashedPassword = await this.hashPasswordForServer(password, username);
-            await this.api.login(username, hashedPassword);
+            await this.api.login(username, password);
             this.state.setState({ user: this.api.user, loading: false });
             UIComponents.showSuccess('Login successful!');
             this.router.navigate('/');
@@ -282,8 +277,7 @@ class ForumApp {
 
         try {
             this.state.setState({ loading: true, error: null });
-            const hashedPassword = await this.hashPasswordForServer(password, username);
-            await this.api.register(username, email, hashedPassword);
+            await this.api.register(username, email, password);
             this.state.setState({ user: this.api.user, loading: false });
             UIComponents.showSuccess('Registration successful!');
             this.router.navigate('/');

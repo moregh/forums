@@ -1,5 +1,6 @@
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, Dict, Any, List
+import re
 
 
 class UserRegister(BaseModel):
@@ -141,3 +142,23 @@ class PostEditHistory(BaseModel):
 class PostDetailResponse(PostResponse):
     """Extended post response with edit history"""
     edit_history: Optional[List[PostEditHistory]] = None
+
+
+@validator('password')
+def validate_password(cls, v):
+    if len(v) < 12:
+        raise ValueError('Password must be at least 12 characters')
+    
+    if not re.search(r'[A-Z]', v):
+        raise ValueError('Password must contain at least one uppercase letter')
+    
+    if not re.search(r'[a-z]', v):
+        raise ValueError('Password must contain at least one lowercase letter')
+    
+    if not re.search(r'\d', v):
+        raise ValueError('Password must contain at least one number')
+    
+    if not re.search(r'[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]', v):
+        raise ValueError('Password must contain at least one special character')
+    
+    return v
