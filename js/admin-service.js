@@ -187,6 +187,17 @@ class AdminService {
         return 'inactive';
     }
 
+    getActivityLevelInfo(activityLevel) {
+        const levels = {
+            'very-active': { label: 'Very Active', description: '5+ posts/day' },
+            'active': { label: 'Active', description: '2-5 posts/day' },
+            'moderate': { label: 'Moderate', description: '0.5-2 posts/day' },
+            'low': { label: 'Low Activity', description: 'Few posts/week' },
+            'inactive': { label: 'Inactive', description: 'No recent activity' }
+        };
+        return levels[activityLevel] || { label: 'Unknown', description: 'Activity level unknown' };
+    }
+
     isNewUser(user) {
         const weekAgo = Date.now() / 1000 - (7 * 24 * 60 * 60);
         return user.join_date > weekAgo;

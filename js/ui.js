@@ -71,6 +71,9 @@ class UIComponents {
             z-index: 1000;
             max-width: 300px;
         `;
+        
+        document.body.appendChild(infoDiv);
+        
         setTimeout(() => {
             if (infoDiv.parentNode) {
                 infoDiv.parentNode.removeChild(infoDiv);
@@ -79,7 +82,20 @@ class UIComponents {
     }
 
     static formatDate(timestamp) {
-        return new Date(timestamp * 1000).toLocaleString();
+        if (!timestamp) return 'Never';
+        const date = new Date(timestamp * 1000);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+
+        if (diffMins < 1) return 'Just now';
+        if (diffMins < 60) return `${diffMins}m ago`;
+        if (diffHours < 24) return `${diffHours}h ago`;
+        if (diffDays < 7) return `${diffDays}d ago`;
+        
+        return date.toLocaleDateString();
     }
 
     static escapeHtml(text) {
@@ -91,13 +107,11 @@ class UIComponents {
 
     static canEditPost(post, currentUser) {
         if (!currentUser) return false;
-        // Users can edit their own posts, admins can edit any post
         return post.user_id === currentUser.user_id || currentUser.is_admin;
     }
 
     static canDeletePost(post, currentUser) {
         if (!currentUser) return false;
-        // Users can delete their own posts, admins can delete any post
         return post.user_id === currentUser.user_id || currentUser.is_admin;
     }
 
@@ -110,15 +124,12 @@ class UIComponents {
 
         let pagination = '<div class="pagination">';
 
-        // Previous button
         if (currentPage > 1) {
             pagination += `<button onclick="${onPageChange(currentPage - 1)}" class="pagination-btn">« Previous</button>`;
         }
 
-        // Current page indicator
         pagination += `<span class="pagination-info">Page ${currentPage}</span>`;
 
-        // Next button - show if we think there might be more pages
         if (currentPage < totalPages) {
             pagination += `<button onclick="${onPageChange(currentPage + 1)}" class="pagination-btn">Next »</button>`;
         }
@@ -194,26 +205,26 @@ class UIComponents {
         }
 
         return boards.map(board => `
-        <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
-            <h3>${UIComponents.escapeHtml(board.name)}</h3>
-            <p>${UIComponents.escapeHtml(board.description)}</p>
-            <div class="board-stats">
-                <span>${board.thread_count} threads</span>
-                <span>${board.post_count} posts</span>
-                ${board.last_post_username ? `
-                    <span>Last: ${UIComponents.escapeHtml(board.last_post_username)}</span>
-                ` : ''}
+            <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
+                <h3>${UIComponents.escapeHtml(board.name)}</h3>
+                <p>${UIComponents.escapeHtml(board.description)}</p>
+                <div class="board-stats">
+                    <span>${board.thread_count} threads</span>
+                    <span>${board.post_count} posts</span>
+                    ${board.last_post_username ? `
+                        <span>Last: ${UIComponents.escapeHtml(board.last_post_username)}</span>
+                    ` : ''}
+                </div>
             </div>
-        </div>
-    `).join('');
+        `).join('');
     }
+
     static renderPosts(posts, currentUser) {
         if (!posts || posts.length === 0) {
             return '<div class="empty-state"><h3>No posts</h3><p>No posts found in this thread.</p></div>';
         }
 
         return posts.map(post => {
-            // Ensure we have all required post properties with safe defaults
             const safePost = {
                 post_id: post.post_id,
                 user_id: post.user_id,
@@ -277,5 +288,174 @@ class UIComponents {
                 </div>
             </div>
         `;
+    }
+
+    static truncateText(text, maxLength = 100) {
+        if (!text || text.length <= maxLength) return text;
+        return text.substring(0, maxLength) + '...';
+    }
+
+    static createLoadingSpinner(size = 'medium') {
+        const sizes = {
+            small: '20px',
+            medium: '40px',
+            large: '60px'
+        };
+        
+        const spinner = document.createElement('div');
+        spinner.className = 'spinner';
+        spinner.style.width = sizes[size] || sizes.medium;
+        spinner.style.height = sizes[size] || sizes.medium;
+        
+        return spinner;
+    }
+
+    static formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+
+    static debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+
+    static copyToClipboard(text) {
+        if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+                this.showSuccess('Copied to clipboard');
+            }).catch(() => {
+                this.fallbackCopyToClipboard(text);
+            });
+        } else {
+            this.fallbackCopyToClipboard(text);
+        }
+    }
+
+    static fallbackCopyToClipboard(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            document.execCommand('copy');
+            this.showSuccess('Copied to clipboard');
+        } catch (err) {
+            this.showError('Failed to copy to clipboard');
+        }
+        
+        document.body.removeChild(textArea);
+    }
+
+    static highlightText(text, searchTerm) {
+        if (!searchTerm || !text) return text;
+        const regex = new RegExp(`(${this.escapeRegex(searchTerm)})`, 'gi');
+        return text.replace(regex, '<mark>$1</mark>');
+    }
+
+    static escapeRegex(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    static createConfirmDialog(message, onConfirm, onCancel = null) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h3>Confirm Action</h3>
+                <p>${this.escapeHtml(message)}</p>
+                <div class="modal-actions">
+                    <button class="btn-secondary" data-action="cancel">Cancel</button>
+                    <button class="btn-danger" data-action="confirm">Confirm</button>
+                </div>
+            </div>
+        `;
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target.dataset.action === 'cancel') {
+                modal.remove();
+                if (onCancel) onCancel();
+            } else if (e.target.dataset.action === 'confirm') {
+                modal.remove();
+                onConfirm();
+            }
+        });
+
+        document.body.appendChild(modal);
+        return modal;
+    }
+
+    static smoothScrollTo(element, offset = 0) {
+        const elementPosition = element.offsetTop;
+        const offsetPosition = elementPosition - offset;
+
+        window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+        });
+    }
+
+    static isElementInViewport(element) {
+        const rect = element.getBoundingClientRect();
+        return (
+            rect.top >= 0 &&
+            rect.left >= 0 &&
+            rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+            rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+        );
+    }
+
+    static getTimeAgo(timestamp) {
+        const now = Date.now();
+        const diff = now - (timestamp * 1000);
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+        const weeks = Math.floor(days / 7);
+        const months = Math.floor(days / 30);
+        const years = Math.floor(days / 365);
+
+        if (years > 0) return `${years} year${years > 1 ? 's' : ''} ago`;
+        if (months > 0) return `${months} month${months > 1 ? 's' : ''} ago`;
+        if (weeks > 0) return `${weeks} week${weeks > 1 ? 's' : ''} ago`;
+        if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+        if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+        if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+        return 'Just now';
+    }
+
+    static pluralize(count, singular, plural = null) {
+        if (count === 1) return `${count} ${singular}`;
+        return `${count} ${plural || singular + 's'}`;
+    }
+
+    static sanitizeHtml(html) {
+        const temp = document.createElement('div');
+        temp.textContent = html;
+        return temp.innerHTML;
+    }
+
+    static parseMarkdown(text) {
+        return text
+            .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/`(.*?)`/g, '<code>$1</code>')
+            .replace(/\n/g, '<br>');
     }
 }

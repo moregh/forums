@@ -42,19 +42,19 @@ class AdminController {
 
     renderAdminPanel(users, stats, moderationLog) {
         return `
-            <div class="page-header">
+            <div class="admin-header">
                 <h1>Admin Panel</h1>
-                <div class="admin-nav">
+                <div class="admin-nav-tabs">
                     ${this.renderAdminNavigation()}
                 </div>
             </div>
             
-            <div class="admin-content">
+            <div class="admin-layout">
                 <div class="admin-sidebar">
-                    ${this.renderAdminSidebar()}
+                    ${this.renderAdminSidebar(stats)}
                 </div>
                 
-                <div class="admin-main" id="admin-main-content">
+                <div class="admin-main-content" id="admin-main-content">
                     ${this.renderDashboard(users, stats, moderationLog)}
                 </div>
             </div>
@@ -71,40 +71,65 @@ class AdminController {
         ];
 
         return items.map(item => `
-            <button class="admin-nav-item ${this.currentView === item.id ? 'active' : ''}" 
+            <button class="admin-tab ${this.currentView === item.id ? 'active' : ''}" 
                     onclick="adminController.switchView('${item.id}')">
-                <span class="nav-icon">${item.icon}</span>
-                <span class="nav-text">${item.text}</span>
+                <span class="tab-icon">${item.icon}</span>
+                <span class="tab-text">${item.text}</span>
             </button>
         `).join('');
     }
 
-    renderAdminSidebar() {
-        const quickActions = this.adminService.getQuickActions();
-        
+    renderAdminSidebar(stats) {
         return `
             <div class="sidebar-section">
                 <h3>Quick Actions</h3>
-                <div class="quick-actions">
-                    ${quickActions.map(action => `
-                        <button class="quick-action-btn" onclick="adminController.handleQuickAction('${action.id}')">
-                            <span class="action-icon">${action.icon}</span>
-                            <span class="action-text">${action.text}</span>
-                        </button>
-                    `).join('')}
+                <div class="quick-actions-grid">
+                    <button class="quick-action-card" onclick="adminController.handleQuickAction('view_users')">
+                        <div class="action-icon">👥</div>
+                        <div class="action-text">Manage Users</div>
+                        <div class="action-count">${stats.total_users || 0}</div>
+                    </button>
+                    <button class="quick-action-card" onclick="adminController.handleQuickAction('view_reports')">
+                        <div class="action-icon">🚨</div>
+                        <div class="action-text">View Reports</div>
+                        <div class="action-count">0</div>
+                    </button>
+                    <button class="quick-action-card" onclick="adminController.handleQuickAction('moderation_log')">
+                        <div class="action-icon">📋</div>
+                        <div class="action-text">Mod Log</div>
+                        <div class="action-count">Latest</div>
+                    </button>
+                    <button class="quick-action-card" onclick="adminController.handleQuickAction('forum_stats')">
+                        <div class="action-icon">📊</div>
+                        <div class="action-text">Statistics</div>
+                        <div class="action-count">${stats.total_posts || 0}</div>
+                    </button>
                 </div>
             </div>
             
             <div class="sidebar-section">
                 <h3>System Status</h3>
-                <div class="system-status">
-                    <div class="status-item">
-                        <span class="status-indicator online"></span>
-                        <span>Forum Online</span>
+                <div class="status-indicators">
+                    <div class="status-item healthy">
+                        <div class="status-dot"></div>
+                        <div class="status-info">
+                            <div class="status-label">Forum Status</div>
+                            <div class="status-value">Online</div>
+                        </div>
                     </div>
-                    <div class="status-item">
-                        <span class="status-indicator"></span>
-                        <span>All Systems Normal</span>
+                    <div class="status-item healthy">
+                        <div class="status-dot"></div>
+                        <div class="status-info">
+                            <div class="status-label">Users Online</div>
+                            <div class="status-value">${stats.users_online || 0}</div>
+                        </div>
+                    </div>
+                    <div class="status-item healthy">
+                        <div class="status-dot"></div>
+                        <div class="status-info">
+                            <div class="status-label">System Load</div>
+                            <div class="status-value">Normal</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -113,24 +138,36 @@ class AdminController {
 
     renderDashboard(users, stats, moderationLog) {
         return `
-            <div class="dashboard-content">
-                <div class="stats-overview">
-                    ${this.renderStatsCards(stats)}
+            <div class="dashboard-overview">
+                ${this.renderStatsCards(stats)}
+            </div>
+            
+            <div class="dashboard-content-grid">
+                <div class="dashboard-panel">
+                    <div class="panel-header">
+                        <h3>Recent User Activity</h3>
+                        <button onclick="adminController.switchView('users')" class="btn-text">View All</button>
+                    </div>
+                    <div class="panel-content">
+                        ${this.renderRecentUsers(users.slice(0, 8))}
+                    </div>
                 </div>
                 
-                <div class="dashboard-grid">
-                    <div class="dashboard-panel">
-                        <h3>Recent User Activity</h3>
-                        ${this.renderRecentUsers(users.slice(0, 10))}
-                    </div>
-                    
-                    <div class="dashboard-panel">
+                <div class="dashboard-panel">
+                    <div class="panel-header">
                         <h3>Recent Moderation Actions</h3>
-                        ${this.renderRecentModerationLog(moderationLog.slice(0, 10))}
+                        <button onclick="adminController.switchView('moderation')" class="btn-text">View All</button>
                     </div>
-                    
-                    <div class="dashboard-panel">
+                    <div class="panel-content">
+                        ${this.renderRecentModerationLog(moderationLog.slice(0, 8))}
+                    </div>
+                </div>
+                
+                <div class="dashboard-panel full-width">
+                    <div class="panel-header">
                         <h3>System Overview</h3>
+                    </div>
+                    <div class="panel-content">
                         ${this.renderSystemOverview(stats)}
                     </div>
                 </div>
@@ -140,20 +177,23 @@ class AdminController {
 
     renderStatsCards(stats) {
         const cards = [
-            { title: 'Total Users', value: stats.total_users || 0, icon: '👥', color: 'blue' },
-            { title: 'Total Threads', value: stats.total_threads || 0, icon: '💬', color: 'green' },
-            { title: 'Total Posts', value: stats.total_posts || 0, icon: '📝', color: 'purple' },
-            { title: 'Users Online', value: stats.users_online || 0, icon: '🟢', color: 'orange' },
-            { title: 'Posts Today', value: stats.posts_today || 0, icon: '📈', color: 'red' },
-            { title: 'Total Boards', value: stats.total_boards || 0, icon: '📋', color: 'teal' }
+            { title: 'Total Users', value: stats.total_users || 0, icon: '👥', color: 'blue', trend: '+12%' },
+            { title: 'Total Threads', value: stats.total_threads || 0, icon: '💬', color: 'green', trend: '+8%' },
+            { title: 'Total Posts', value: stats.total_posts || 0, icon: '📝', color: 'purple', trend: '+15%' },
+            { title: 'Users Online', value: stats.users_online || 0, icon: '🟢', color: 'orange', trend: 'Now' },
+            { title: 'Posts Today', value: stats.posts_today || 0, icon: '📈', color: 'red', trend: 'Today' },
+            { title: 'Total Boards', value: stats.total_boards || 0, icon: '📋', color: 'teal', trend: 'Active' }
         ];
 
         return `
-            <div class="stats-grid">
+            <div class="stats-cards-grid">
                 ${cards.map(card => `
                     <div class="stat-card ${card.color}">
-                        <div class="stat-icon">${card.icon}</div>
-                        <div class="stat-content">
+                        <div class="stat-header">
+                            <div class="stat-icon">${card.icon}</div>
+                            <div class="stat-trend ${card.color}">${card.trend}</div>
+                        </div>
+                        <div class="stat-body">
                             <div class="stat-value">${card.value.toLocaleString()}</div>
                             <div class="stat-title">${card.title}</div>
                         </div>
@@ -168,25 +208,29 @@ class AdminController {
         const userStats = this.adminService.getUserStats(users);
 
         return `
-            <div class="user-management">
+            <div class="users-management">
                 <div class="section-header">
                     <h2>User Management</h2>
                     <div class="section-actions">
-                        <button onclick="adminController.showUserFilters()" class="btn-secondary">Filters</button>
-                        <button onclick="adminController.exportUsers()" class="btn-secondary">Export</button>
+                        <button onclick="adminController.showUserFilters()" class="btn-secondary">
+                            <span>🔍</span> Filters
+                        </button>
+                        <button onclick="adminController.exportUsers()" class="btn-secondary">
+                            <span>📤</span> Export
+                        </button>
                     </div>
                 </div>
                 
-                <div class="user-stats-summary">
+                <div class="user-stats-overview">
                     ${this.renderUserStatsCards(userStats)}
                 </div>
                 
-                <div class="user-controls">
-                    <div class="search-box">
+                <div class="user-controls-bar">
+                    <div class="search-section">
                         <input type="text" id="user-search" placeholder="Search users..." 
                                onkeyup="adminController.handleUserSearch(this.value)">
                     </div>
-                    <div class="filter-controls">
+                    <div class="filter-section">
                         <select id="user-status-filter" onchange="adminController.handleUserFilter('status', this.value)">
                             <option value="">All Users</option>
                             <option value="admin">Admins Only</option>
@@ -202,63 +246,87 @@ class AdminController {
                     </div>
                 </div>
                 
-                <div class="user-list" id="user-list-container">
-                    ${this.renderUserList(formattedUsers)}
+                <div class="users-table-container" id="user-list-container">
+                    ${this.renderUserTable(formattedUsers)}
                 </div>
             </div>
         `;
     }
 
-    renderUserList(users) {
+    renderUserTable(users) {
         if (!users || users.length === 0) {
             return '<div class="empty-state"><p>No users found.</p></div>';
         }
 
         return `
-            <div class="user-table">
-                <div class="user-table-header">
-                    <div class="col-user">User</div>
-                    <div class="col-status">Status</div>
-                    <div class="col-activity">Activity</div>
-                    <div class="col-stats">Stats</div>
+            <div class="users-table">
+                <div class="table-header">
+                    <div class="col-user">User Information</div>
+                    <div class="col-activity">Activity Level</div>
+                    <div class="col-stats">Statistics</div>
+                    <div class="col-dates">Dates</div>
                     <div class="col-actions">Actions</div>
                 </div>
-                ${users.map(user => this.renderUserRow(user)).join('')}
+                <div class="table-body">
+                    ${users.map(user => this.renderUserRow(user)).join('')}
+                </div>
             </div>
         `;
     }
 
     renderUserRow(user) {
         const currentUser = this.state.getState().user;
+        const activityInfo = this.getActivityLevelInfo(user.activityLevel);
         
         return `
             <div class="user-row" data-user-id="${user.user_id}">
                 <div class="col-user">
-                    <div class="user-info">
-                        <strong>${UIComponents.escapeHtml(user.username)}</strong>
-                        <div class="user-email">${UIComponents.escapeHtml(user.email)}</div>
-                        <div class="user-badges">
-                            ${user.is_admin ? '<span class="badge admin">Admin</span>' : ''}
-                            ${user.is_banned ? '<span class="badge banned">Banned</span>' : ''}
-                            ${user.isNewUser ? '<span class="badge new">New</span>' : ''}
+                    <div class="user-profile">
+                        <div class="user-avatar">${user.username.charAt(0).toUpperCase()}</div>
+                        <div class="user-details">
+                            <div class="user-name">${UIComponents.escapeHtml(user.username)}</div>
+                            <div class="user-email">${UIComponents.escapeHtml(user.email)}</div>
+                            <div class="user-badges">
+                                ${user.is_admin ? '<span class="badge admin">Admin</span>' : ''}
+                                ${user.is_banned ? '<span class="badge banned">Banned</span>' : ''}
+                                ${user.isNewUser ? '<span class="badge new">New User</span>' : ''}
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="col-status">
-                    <div class="activity-indicator ${user.activityLevel}"></div>
-                    <span class="activity-text">${user.activityLevel.replace('-', ' ')}</span>
-                </div>
                 <div class="col-activity">
-                    <div class="activity-info">
-                        <div>Joined: ${user.formattedJoinDate}</div>
-                        <div>Last seen: ${user.formattedLastActivity}</div>
-                        <div>Member for: ${user.membershipDuration}</div>
+                    <div class="activity-indicator">
+                        <div class="activity-level ${user.activityLevel}">
+                            <div class="activity-dot"></div>
+                            <div class="activity-text">
+                                <div class="activity-label">${activityInfo.label}</div>
+                                <div class="activity-desc">${activityInfo.description}</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="col-stats">
-                    <div class="user-stats">
-                        <div>${user.post_count || 0} posts</div>
-                        <div>${user.thread_count || 0} threads</div>
+                    <div class="user-stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-number">${user.post_count || 0}</div>
+                            <div class="stat-label">Posts</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-number">${user.thread_count || 0}</div>
+                            <div class="stat-label">Threads</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-dates">
+                    <div class="date-info">
+                        <div class="date-item">
+                            <div class="date-label">Joined</div>
+                            <div class="date-value">${user.formattedJoinDate}</div>
+                        </div>
+                        <div class="date-item">
+                            <div class="date-label">Last Active</div>
+                            <div class="date-value">${user.formattedLastActivity}</div>
+                        </div>
                     </div>
                 </div>
                 <div class="col-actions">
@@ -268,66 +336,87 @@ class AdminController {
         `;
     }
 
+    getActivityLevelInfo(activityLevel) {
+        const levels = {
+            'very-active': { label: 'Very Active', description: '5+ posts/day' },
+            'active': { label: 'Active', description: '2-5 posts/day' },
+            'moderate': { label: 'Moderate', description: '0.5-2 posts/day' },
+            'low': { label: 'Low Activity', description: 'Few posts/week' },
+            'inactive': { label: 'Inactive', description: 'No recent activity' }
+        };
+        return levels[activityLevel] || { label: 'Unknown', description: 'Activity level unknown' };
+    }
+
     renderUserActions(user, currentUser) {
         const actions = [];
         
         if (!user.is_banned) {
             const banAction = this.adminService.canPerformAction('ban', user, currentUser);
-            if (banAction.allowed) {
-                actions.push(`<button onclick="adminController.banUser(${user.user_id})" class="btn-small btn-danger">Ban</button>`);
+            if (banAction && banAction.allowed) {
+                actions.push(`<button onclick="adminController.banUser(${user.user_id})" class="action-btn ban">Ban</button>`);
             }
         } else {
             const unbanAction = this.adminService.canPerformAction('unban', user, currentUser);
-            if (unbanAction.allowed) {
-                actions.push(`<button onclick="adminController.unbanUser(${user.user_id})" class="btn-small btn-success">Unban</button>`);
+            if (unbanAction && unbanAction.allowed) {
+                actions.push(`<button onclick="adminController.unbanUser(${user.user_id})" class="action-btn unban">Unban</button>`);
             }
         }
 
         if (!user.is_admin) {
             const promoteAction = this.adminService.canPerformAction('promote', user, currentUser);
-            if (promoteAction.allowed) {
-                actions.push(`<button onclick="adminController.promoteUser(${user.user_id})" class="btn-small btn-warning">Make Admin</button>`);
+            if (promoteAction && promoteAction.allowed) {
+                actions.push(`<button onclick="adminController.promoteUser(${user.user_id})" class="action-btn promote">Make Admin</button>`);
             }
         } else {
             const demoteAction = this.adminService.canPerformAction('demote', user, currentUser);
-            if (demoteAction.allowed) {
-                actions.push(`<button onclick="adminController.demoteUser(${user.user_id})" class="btn-small btn-secondary">Remove Admin</button>`);
+            if (demoteAction && demoteAction.allowed) {
+                actions.push(`<button onclick="adminController.demoteUser(${user.user_id})" class="action-btn demote">Remove Admin</button>`);
             }
         }
 
-        return `<div class="user-actions">${actions.join('')}</div>`;
+        return `<div class="user-actions-grid">${actions.join('')}</div>`;
     }
 
     renderUserStatsCards(stats) {
         const cards = [
-            { title: 'Total Users', value: stats.total, color: 'blue' },
-            { title: 'Active Users', value: stats.active, color: 'green' },
-            { title: 'Admins', value: stats.admins, color: 'purple' },
-            { title: 'Banned Users', value: stats.banned, color: 'red' },
-            { title: 'New Users', value: stats.newUsers, color: 'orange' }
+            { title: 'Total Users', value: stats.total, color: 'blue', icon: '👥' },
+            { title: 'Active Users', value: stats.active, color: 'green', icon: '🟢' },
+            { title: 'Administrators', value: stats.admins, color: 'purple', icon: '👑' },
+            { title: 'Banned Users', value: stats.banned, color: 'red', icon: '🚫' },
+            { title: 'New This Week', value: stats.newUsers, color: 'orange', icon: '✨' }
         ];
 
-        return cards.map(card => `
-            <div class="mini-stat-card ${card.color}">
-                <div class="mini-stat-value">${card.value}</div>
-                <div class="mini-stat-title">${card.title}</div>
+        return `
+            <div class="mini-stats-grid">
+                ${cards.map(card => `
+                    <div class="mini-stat-card ${card.color}">
+                        <div class="mini-stat-icon">${card.icon}</div>
+                        <div class="mini-stat-content">
+                            <div class="mini-stat-value">${card.value}</div>
+                            <div class="mini-stat-title">${card.title}</div>
+                        </div>
+                    </div>
+                `).join('')}
             </div>
-        `).join('');
+        `;
     }
 
     renderRecentUsers(users) {
         if (!users || users.length === 0) {
-            return '<p>No recent user activity.</p>';
+            return '<div class="empty-panel">No recent user activity.</div>';
         }
 
         return `
-            <div class="recent-users">
+            <div class="recent-users-list">
                 ${users.map(user => `
                     <div class="recent-user-item">
-                        <div class="user-avatar">${user.username.charAt(0).toUpperCase()}</div>
-                        <div class="user-details">
-                            <strong>${UIComponents.escapeHtml(user.username)}</strong>
-                            <div class="user-meta">Last active: ${UIComponents.formatDate(user.last_activity)}</div>
+                        <div class="user-avatar small">${user.username.charAt(0).toUpperCase()}</div>
+                        <div class="user-info">
+                            <div class="user-name">${UIComponents.escapeHtml(user.username)}</div>
+                            <div class="user-activity">Last active: ${UIComponents.formatDate(user.last_activity)}</div>
+                        </div>
+                        <div class="user-status ${user.is_admin ? 'admin' : user.is_banned ? 'banned' : 'user'}">
+                            ${user.is_admin ? 'Admin' : user.is_banned ? 'Banned' : 'User'}
                         </div>
                     </div>
                 `).join('')}
@@ -337,23 +426,25 @@ class AdminController {
 
     renderRecentModerationLog(logs) {
         if (!logs || logs.length === 0) {
-            return '<p>No recent moderation actions.</p>';
+            return '<div class="empty-panel">No recent moderation actions.</div>';
         }
 
         return `
-            <div class="moderation-entries">
+            <div class="moderation-log-list">
                 ${logs.map(log => {
                     const formatted = this.adminService.formatModerationAction(log);
                     return `
-                        <div class="moderation-entry severity-${formatted.severityLevel}">
-                            <div class="mod-header">
-                                <strong>${UIComponents.escapeHtml(formatted.moderator_name || 'Unknown')}</strong>
-                                <span class="action-badge ${formatted.severityLevel}">${formatted.actionText}</span>
-                                <span class="mod-date">${formatted.formattedDate}</span>
+                        <div class="moderation-item severity-${formatted.severityLevel}">
+                            <div class="mod-icon severity-${formatted.severityLevel}">
+                                ${this.getModerationIcon(formatted.severityLevel)}
                             </div>
-                            <div class="mod-details">
-                                ${formatted.targetText}
-                                ${log.reason ? `<br><em>Reason: ${UIComponents.escapeHtml(log.reason)}</em>` : ''}
+                            <div class="mod-content">
+                                <div class="mod-action">${formatted.actionText}</div>
+                                <div class="mod-details">${formatted.targetText}</div>
+                                <div class="mod-meta">
+                                    <span class="mod-user">${UIComponents.escapeHtml(formatted.moderator_name || 'Unknown')}</span>
+                                    <span class="mod-date">${formatted.formattedDate}</span>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -362,20 +453,33 @@ class AdminController {
         `;
     }
 
+    getModerationIcon(severity) {
+        const icons = {
+            high: '🚨',
+            medium: '⚠️',
+            low: 'ℹ️'
+        };
+        return icons[severity] || 'ℹ️';
+    }
+
     renderSystemOverview(stats) {
         return `
-            <div class="system-overview">
-                <div class="overview-item">
-                    <span class="overview-label">Average Posts per User:</span>
-                    <span class="overview-value">${Math.round((stats.total_posts || 0) / Math.max(1, stats.total_users || 1))}</span>
+            <div class="system-overview-grid">
+                <div class="overview-metric">
+                    <div class="metric-label">Average Posts per User</div>
+                    <div class="metric-value">${Math.round((stats.total_posts || 0) / Math.max(1, stats.total_users || 1))}</div>
                 </div>
-                <div class="overview-item">
-                    <span class="overview-label">Average Threads per User:</span>
-                    <span class="overview-value">${Math.round((stats.total_threads || 0) / Math.max(1, stats.total_users || 1))}</span>
+                <div class="overview-metric">
+                    <div class="metric-label">Average Threads per User</div>
+                    <div class="metric-value">${Math.round((stats.total_threads || 0) / Math.max(1, stats.total_users || 1))}</div>
                 </div>
-                <div class="overview-item">
-                    <span class="overview-label">Top Poster:</span>
-                    <span class="overview-value">${stats.top_posters?.[0]?.username || 'N/A'}</span>
+                <div class="overview-metric">
+                    <div class="metric-label">Top Poster</div>
+                    <div class="metric-value">${stats.top_posters?.[0]?.username || 'N/A'}</div>
+                </div>
+                <div class="overview-metric">
+                    <div class="metric-label">Forum Activity</div>
+                    <div class="metric-value">High</div>
                 </div>
             </div>
         `;
@@ -423,7 +527,7 @@ class AdminController {
     }
 
     updateNavigation() {
-        document.querySelectorAll('.admin-nav-item').forEach(item => {
+        document.querySelectorAll('.admin-tab').forEach(item => {
             item.classList.remove('active');
         });
         
@@ -438,7 +542,7 @@ class AdminController {
             'Ban User',
             `<textarea name="reason" placeholder="Reason for ban (required)" rows="4" required></textarea>
              <div class="ban-warning">
-                <strong>Warning:</strong> This will immediately ban the user and prevent them from accessing the forum.
+                <strong>⚠️ Warning:</strong> This will immediately ban the user and prevent them from accessing the forum.
              </div>`,
             async (formData) => {
                 await this.adminService.banUser(userId, formData.reason);
@@ -446,9 +550,7 @@ class AdminController {
                 await this.refreshCurrentView();
             },
             {
-                validation: (data) => this.adminService.validateBanReason ? 
-                    { isValid: true, errors: {} } : 
-                    Validation.validateForm(data, { reason: 'banReason' }),
+                validation: (data) => Validation.validateForm(data, { reason: 'banReason' }),
                 confirmClass: 'btn-danger',
                 submitText: 'Ban User'
             }
@@ -501,7 +603,7 @@ class AdminController {
                 : await this.adminService.searchUsers(query);
                 
             const container = document.getElementById('user-list-container');
-            container.innerHTML = this.renderUserList(this.adminService.formatUsersForDisplay(users));
+            container.innerHTML = this.renderUserTable(this.adminService.formatUsersForDisplay(users));
         } catch (error) {
             this.notifications.showError('Search failed: ' + error.message);
         }
@@ -518,7 +620,7 @@ class AdminController {
             const sortedUsers = this.adminService.sortUsers(users, sortBy);
             
             const container = document.getElementById('user-list-container');
-            container.innerHTML = this.renderUserList(this.adminService.formatUsersForDisplay(sortedUsers));
+            container.innerHTML = this.renderUserTable(this.adminService.formatUsersForDisplay(sortedUsers));
         } catch (error) {
             this.notifications.showError('Sort failed: ' + error.message);
         }
@@ -530,7 +632,7 @@ class AdminController {
             const filteredUsers = this.adminService.filterUsers(users, this.currentFilters);
             
             const container = document.getElementById('user-list-container');
-            container.innerHTML = this.renderUserList(this.adminService.formatUsersForDisplay(filteredUsers));
+            container.innerHTML = this.renderUserTable(this.adminService.formatUsersForDisplay(filteredUsers));
         } catch (error) {
             this.notifications.showError('Filter failed: ' + error.message);
         }
@@ -560,15 +662,17 @@ class AdminController {
 
     renderModerationView(logs) {
         return `
-            <div class="moderation-view">
-                <h2>Moderation Log</h2>
-                <div class="moderation-controls">
-                    <select onchange="adminController.filterModerationLog(this.value)">
-                        <option value="">All Actions</option>
-                        <option value="ban">Bans</option>
-                        <option value="delete">Deletions</option>
-                        <option value="edit">Edits</option>
-                    </select>
+            <div class="moderation-management">
+                <div class="section-header">
+                    <h2>Moderation Log</h2>
+                    <div class="section-actions">
+                        <select onchange="adminController.filterModerationLog(this.value)">
+                            <option value="">All Actions</option>
+                            <option value="ban">Bans</option>
+                            <option value="delete">Deletions</option>
+                            <option value="edit">Edits</option>
+                        </select>
+                    </div>
                 </div>
                 <div class="moderation-log-detailed">
                     ${this.renderDetailedModerationLog(logs)}
@@ -578,33 +682,69 @@ class AdminController {
     }
 
     renderDetailedModerationLog(logs) {
-        return logs.map(log => {
-            const formatted = this.adminService.formatModerationAction(log);
-            return `
-                <div class="detailed-mod-entry">
-                    <div class="mod-entry-header">
-                        <span class="moderator">${UIComponents.escapeHtml(formatted.moderator_name)}</span>
-                        <span class="action ${formatted.severityLevel}">${formatted.actionText}</span>
-                        <span class="timestamp">${formatted.formattedDate}</span>
-                    </div>
-                    <div class="mod-entry-details">
-                        <div>Target: ${formatted.targetText}</div>
-                        ${log.reason ? `<div>Reason: ${UIComponents.escapeHtml(log.reason)}</div>` : ''}
-                    </div>
-                </div>
-            `;
-        }).join('');
+        if (!logs || logs.length === 0) {
+            return '<div class="empty-state">No moderation actions found.</div>';
+        }
+
+        return `
+            <div class="detailed-moderation-list">
+                ${logs.map(log => {
+                    const formatted = this.adminService.formatModerationAction(log);
+                    return `
+                        <div class="detailed-mod-entry severity-${formatted.severityLevel}">
+                            <div class="mod-entry-header">
+                                <div class="mod-info">
+                                    <span class="moderator">${UIComponents.escapeHtml(formatted.moderator_name)}</span>
+                                    <span class="action severity-${formatted.severityLevel}">${formatted.actionText}</span>
+                                </div>
+                                <span class="timestamp">${formatted.formattedDate}</span>
+                            </div>
+                            <div class="mod-entry-details">
+                                <div class="target-info">Target: ${formatted.targetText}</div>
+                                ${log.reason ? `<div class="reason-info">Reason: ${UIComponents.escapeHtml(log.reason)}</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `;
     }
 
     renderContentManagement() {
         return `
             <div class="content-management">
-                <h2>Content Management</h2>
-                <div class="content-tools">
-                    <button onclick="adminController.bulkContentAction('delete')" class="btn-danger">Bulk Delete</button>
-                    <button onclick="adminController.contentAnalytics()" class="btn-secondary">Analytics</button>
+                <div class="section-header">
+                    <h2>Content Management</h2>
                 </div>
-                <p>Content management tools will be implemented here.</p>
+                <div class="content-tools-grid">
+                    <div class="tool-card">
+                        <div class="tool-icon">🗑️</div>
+                        <div class="tool-info">
+                            <h4>Bulk Delete</h4>
+                            <p>Remove multiple posts or threads</p>
+                            <button onclick="adminController.bulkContentAction('delete')" class="btn-danger">Start</button>
+                        </div>
+                    </div>
+                    <div class="tool-card">
+                        <div class="tool-icon">📊</div>
+                        <div class="tool-info">
+                            <h4>Content Analytics</h4>
+                            <p>View detailed content statistics</p>
+                            <button onclick="adminController.contentAnalytics()" class="btn-secondary">View</button>
+                        </div>
+                    </div>
+                    <div class="tool-card">
+                        <div class="tool-icon">🔍</div>
+                        <div class="tool-info">
+                            <h4>Content Search</h4>
+                            <p>Search and filter all content</p>
+                            <button onclick="adminController.showContentSearch()" class="btn-secondary">Search</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="placeholder-message">
+                    <p>Content management tools will be fully implemented in a future update.</p>
+                </div>
             </div>
         `;
     }
@@ -612,23 +752,51 @@ class AdminController {
     renderSystemSettings() {
         return `
             <div class="system-settings">
-                <h2>System Settings</h2>
-                <div class="settings-sections">
+                <div class="section-header">
+                    <h2>System Settings</h2>
+                </div>
+                <div class="settings-grid">
                     <div class="settings-section">
-                        <h3>General Settings</h3>
-                        <p>General forum configuration options.</p>
+                        <div class="settings-header">
+                            <h3>General Settings</h3>
+                            <p>Configure basic forum settings</p>
+                        </div>
+                        <div class="settings-content">
+                            <div class="setting-item">
+                                <label>Forum Name</label>
+                                <input type="text" value="Forum" readonly>
+                            </div>
+                            <div class="setting-item">
+                                <label>Registration Enabled</label>
+                                <input type="checkbox" checked disabled>
+                            </div>
+                        </div>
                     </div>
                     <div class="settings-section">
-                        <h3>Security Settings</h3>
-                        <p>Security and authentication configuration.</p>
+                        <div class="settings-header">
+                            <h3>Security Settings</h3>
+                            <p>Manage security and authentication</p>
+                        </div>
+                        <div class="settings-content">
+                            <div class="setting-item">
+                                <label>Require Email Verification</label>
+                                <input type="checkbox" disabled>
+                            </div>
+                            <div class="setting-item">
+                                <label>Max Login Attempts</label>
+                                <input type="number" value="5" readonly>
+                            </div>
+                        </div>
                     </div>
+                </div>
+                <div class="placeholder-message">
+                    <p>System settings will be fully configurable in a future update.</p>
                 </div>
             </div>
         `;
     }
 
     setupAdminInteractions() {
-        // Additional setup for admin-specific interactions
     }
 
     async refreshCurrentView() {
@@ -643,8 +811,17 @@ class AdminController {
             case 'moderation_log':
                 this.switchView('moderation');
                 break;
+            case 'view_reports':
+                this.notifications.showInfo('Reports feature coming soon');
+                break;
+            case 'forum_stats':
+                this.switchView('dashboard');
+                break;
+            case 'system_settings':
+                this.switchView('settings');
+                break;
             default:
-                this.notifications.showInfo(`Quick action: ${actionId}`);
+                this.notifications.showInfo(`Quick action: ${actionId} - Feature coming soon`);
         }
     }
 
@@ -654,13 +831,34 @@ class AdminController {
             <div class="error-state">
                 <h3>Error Loading Admin Panel</h3>
                 <p>${UIComponents.escapeHtml(message)}</p>
-                <button onclick="location.reload()" class="btn-primary">Retry</button>
-                <button onclick="adminController.router.navigate('/')" class="btn-secondary">Return to Home</button>
+                <div class="error-actions">
+                    <button onclick="location.reload()" class="btn-primary">Retry</button>
+                    <button onclick="adminController.router.navigate('/')" class="btn-secondary">Return to Home</button>
+                </div>
             </div>
         `;
     }
 
+    bulkContentAction(action) {
+        this.notifications.showInfo(`Bulk ${action} feature will be implemented soon`);
+    }
+
+    contentAnalytics() {
+        this.notifications.showInfo('Content analytics feature will be implemented soon');
+    }
+
+    showContentSearch() {
+        this.notifications.showInfo('Content search feature will be implemented soon');
+    }
+
+    filterModerationLog(filter) {
+        this.notifications.showInfo(`Filtering by: ${filter || 'all actions'}`);
+    }
+
+    showUserFilters() {
+        this.notifications.showInfo('Advanced user filters will be implemented soon');
+    }
+
     destroy() {
-        // Cleanup if needed
     }
 }
