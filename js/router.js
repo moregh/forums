@@ -16,17 +16,18 @@ class Router {
 
     navigate(path, pushState = true) {
         if (this.isNavigating) return; // Prevent recursion
-        
+
         // Don't push state if we're already on this path
         if (pushState && path !== window.location.pathname) {
             history.pushState({}, '', path);
         }
-        
+
         // Only handle route if the path actually changed
         if (path !== this.currentRoute) {
             this.handleRoute();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
-}
+    }
 
     // Handle current route
     handleRoute() {

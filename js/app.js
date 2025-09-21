@@ -76,14 +76,17 @@ class ForumApp {
         const content = document.getElementById('content');
         const { boards, user } = this.state.getState();
         content.innerHTML = Templates.home(boards, user);
+         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     showLogin() {
         document.getElementById('content').innerHTML = Templates.login();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     showRegister() {
         document.getElementById('content').innerHTML = Templates.register();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     async navigateToThread(threadId, threadData = null) {
         if (this.navigationLock) {
@@ -135,6 +138,7 @@ class ForumApp {
                 totalPages,
                 loading: false
             });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });
         }
@@ -213,7 +217,7 @@ class ForumApp {
                 totalPages: totalPages,
                 loading: false
             });
-
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         } catch (error) {
             UIComponents.showError(`Error in showThread: ${error}`);
             console.error('Error in showThread:', error);
@@ -487,6 +491,7 @@ class ForumApp {
         `;
 
             this.state.setState({ loading: false });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
 
         } catch (error) {
             UIComponents.showError(`Error loading admin panel: ${error}`);
