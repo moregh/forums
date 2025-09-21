@@ -21,9 +21,9 @@ class UIComponents {
             z-index: 1000;
             max-width: 300px;
         `;
-        
+
         document.body.appendChild(errorDiv);
-        
+
         setTimeout(() => {
             if (errorDiv.parentNode) {
                 errorDiv.parentNode.removeChild(errorDiv);
@@ -46,9 +46,9 @@ class UIComponents {
             z-index: 1000;
             max-width: 300px;
         `;
-        
+
         document.body.appendChild(successDiv);
-        
+
         setTimeout(() => {
             if (successDiv.parentNode) {
                 successDiv.parentNode.removeChild(successDiv);
@@ -107,22 +107,22 @@ class UIComponents {
 
     static renderPagination(currentPage, totalPages, onPageChange) {
         if (totalPages <= 1) return '';
-        
+
         let pagination = '<div class="pagination">';
-        
+
         // Previous button
         if (currentPage > 1) {
             pagination += `<button onclick="${onPageChange(currentPage - 1)}" class="pagination-btn">« Previous</button>`;
         }
-        
+
         // Current page indicator
         pagination += `<span class="pagination-info">Page ${currentPage}</span>`;
-        
+
         // Next button - show if we think there might be more pages
         if (currentPage < totalPages) {
             pagination += `<button onclick="${onPageChange(currentPage + 1)}" class="pagination-btn">Next »</button>`;
         }
-        
+
         pagination += '</div>';
         return pagination;
     }
@@ -131,7 +131,7 @@ class UIComponents {
         if (!threads || threads.length === 0) {
             return '<div class="empty-state"><h3>No threads</h3><p>No threads have been created in this board yet.</p></div>';
         }
-        
+
         return threads.map(thread => {
             const safeThread = {
                 thread_id: thread.thread_id,
@@ -146,7 +146,7 @@ class UIComponents {
                 last_post_at: thread.last_post_at || null,
                 user_id: thread.user_id || thread.author_id || 0
             };
-            
+
             return `
                 <div class="thread-row ${safeThread.sticky ? 'sticky' : ''}" 
                      data-thread-id="${safeThread.thread_id}">
@@ -187,13 +187,13 @@ class UIComponents {
             `;
         }).join('');
     }
-    
+
     static renderBoards(boards) {
-    if (!boards || boards.length === 0) {
-        return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
-    }
-    
-    return boards.map(board => `
+        if (!boards || boards.length === 0) {
+            return '<div class="empty-state"><h3>No boards available</h3><p>No boards have been created yet.</p></div>';
+        }
+
+        return boards.map(board => `
         <div class="board-card" onclick="forum.router.navigate('/boards/${board.board_id}')">
             <h3>${UIComponents.escapeHtml(board.name)}</h3>
             <p>${UIComponents.escapeHtml(board.description)}</p>
@@ -206,12 +206,12 @@ class UIComponents {
             </div>
         </div>
     `).join('');
-}
+    }
     static renderPosts(posts, currentUser) {
         if (!posts || posts.length === 0) {
             return '<div class="empty-state"><h3>No posts</h3><p>No posts found in this thread.</p></div>';
         }
-        
+
         return posts.map(post => {
             // Ensure we have all required post properties with safe defaults
             const safePost = {
@@ -222,7 +222,7 @@ class UIComponents {
                 timestamp: post.timestamp || 0,
                 edited: post.edited || false
             };
-            
+
             return `
                 <div class="post" id="post-${safePost.post_id}">
                     <div class="post-header">

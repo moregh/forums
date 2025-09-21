@@ -72,7 +72,7 @@ class ForumApp {
         const content = document.getElementById('content');
         const { boards, user } = this.state.getState();
         content.innerHTML = Templates.home(boards, user);
-         window.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
     }
 
     showLogin() {
@@ -107,7 +107,7 @@ class ForumApp {
             // Clear navigation lock after a short delay to prevent rapid clicks
             setTimeout(() => {
                 this.navigationLock = false;
-            }, 250); 
+            }, 250);
         }
     }
 
@@ -151,7 +151,7 @@ class ForumApp {
                     this.api.getThreadInfo(threadId)
                 ]);
             }
-            
+
             if (!threadInfo || !threadInfo.thread_id) {
                 throw new Error('Invalid thread info received from API');
             }
@@ -243,8 +243,6 @@ class ForumApp {
                 const threadId = threadRow.dataset.threadId;
 
                 if (threadId && !this.navigationLock) {
-                    // Instead of parsing JSON from data attribute, just use the thread ID
-                    // The thread data will be fetched from the API if needed
                     this.navigateToThread(parseInt(threadId), null);
                 }
             }
@@ -639,10 +637,10 @@ class ForumApp {
         try {
             // Show loading state
             this.state.setState({ loading: true, error: null });
-            
+
             // Create the post
             const newPost = await this.api.createPost(threadId, content);
-            
+
             if (!newPost) {
                 throw new Error('Failed to create post - no response from server');
             }
@@ -688,14 +686,14 @@ class ForumApp {
             // Add a small delay to ensure the post is fully processed server-side
             setTimeout(() => {
                 this.showThread(threadId, targetPage);
-                
+
                 // Scroll to the new post after the page loads
                 setTimeout(() => {
                     const posts = document.querySelectorAll('.post');
                     if (posts.length > 0) {
                         const lastPost = posts[posts.length - 1];
                         lastPost.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        
+
                         // Add a subtle highlight effect to the new post
                         lastPost.style.border = '2px solid var(--primary)';
                         setTimeout(() => {
@@ -707,10 +705,10 @@ class ForumApp {
 
         } catch (error) {
             console.error('Error creating post:', error);
-            
+
             // Show user-friendly error message
             let errorMessage = 'Failed to create post. Please try again.';
-            
+
             if (error.message) {
                 if (error.message.includes('rate limit')) {
                     errorMessage = 'You are posting too frequently. Please wait a moment and try again.';
@@ -725,7 +723,7 @@ class ForumApp {
                     return;
                 }
             }
-            
+
             UIComponents.showError(errorMessage);
             this.state.setState({ error: error.message, loading: false });
         } finally {
@@ -803,11 +801,6 @@ class ForumApp {
     loadTheme() {
         const savedTheme = localStorage.getItem('forum_theme') || 'default';
         this.setTheme(savedTheme);
-    }
-
-    setupNotifications() {
-        // Only request notification permission when user explicitly wants it
-        // Remove automatic permission request to fix the warning
     }
 
     showNotification(title, body, icon = '/favicon.ico') {
