@@ -6,43 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from database import DatabaseManager
+from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
 from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse
 from security import SecurityManager
 from functools import wraps
-from datetime import datetime, timezone
+from utils import timestamp
+from config import *
 
-# Constants
-SECRET_KEY = "your-secret-key-change-this"
-DB_PATH = "forum.db"
-ALLOWED_ORIGINS = ["http://localhost:3000", "http://localhost:8080", "https://yourforum.com", "http://10.0.1.251:8080"]
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "yourapi.com", "10.0.1.251"]
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-# Rate limits
-RATE_LIMITS = {
-    "register": (5, 60),
-    "login": (10, 60),
-    "edit": (30, 60),
-    "post": (20, 60),
-    "thread": (10, 60)
-}
-
-# Common HTTP exceptions
-class Exceptions:
-    UNAUTHORIZED = HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")
-    FORBIDDEN = HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions")
-    NOT_FOUND = HTTPException(status.HTTP_404_NOT_FOUND, "Resource not found")
-    ALREADY_EXISTS = HTTPException(status.HTTP_400_BAD_REQUEST, "Resource already exists")
-    ACCOUNT_LOCKED = HTTPException(status.HTTP_423_LOCKED, "Account temporarily locked")
-    BANNED = HTTPException(status.HTTP_403_FORBIDDEN, "Account banned")
-    TOO_MANY_REQUESTS = HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Rate limit exceeded")
-    ADMIN_REQUIRED = HTTPException(status.HTTP_403_FORBIDDEN, "Admin privileges required")
-    THREAD_LOCKED = HTTPException(status.HTTP_403_FORBIDDEN, "Thread is locked")
-    SEARCH_TOO_SHORT = HTTPException(status.HTTP_400_BAD_REQUEST, "Search query must be at least 3 characters")
-
-def timestamp() -> float:
-    return datetime.now(timezone.utc).timestamp()
 
 def audit_action(action_type: str, target_type: str = "user"):
     def decorator(func):
@@ -83,6 +55,8 @@ def audit_action(action_type: str, target_type: str = "user"):
                 
         return wrapper
     return decorator
+
+
 
 # FastAPI app initialization
 app = FastAPI(title="Forum API", description="RESTful API for forum system", version="1.0.0")
