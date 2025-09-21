@@ -121,23 +121,9 @@ class ForumAPI {
         });
     }
 
-    // Thread methods - SIMPLIFIED
     async getThreads(boardId, page = 1, perPage = 20) {
         return this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
     }
-
-    // // REMOVED: Complex getThreadsCount method - we'll get this info from the API response headers or board stats
-    // async getThreadsCount(boardId) {
-    //     // Instead of making multiple API calls, we'll use the board stats
-    //     try {
-    //         const boards = await this.getBoards();
-    //         const board = boards.find(b => b.board_id == boardId);
-    //         return board ? board.thread_count : 20; // Fallback to reasonable default
-    //     } catch (error) {
-    //         console.warn('Failed to get threads count:', error);
-    //         return 20; // Fallback
-    //     }
-    // }
 
     async getThreadInfo(threadId) {
         try {
@@ -186,22 +172,9 @@ class ForumAPI {
         });
     }
 
-    // Post methods - SIMPLIFIED
     async getPosts(threadId, page = 1, perPage = 20) {
         return this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
     }
-
-    // // REMOVED: Complex getPostsCount method - we'll calculate this differently
-    // async getPostsCount(threadId) {
-    //     // Instead of making API calls to estimate, we'll use the thread's reply_count + 1
-    //     try {
-    //         const threadInfo = await this.getThreadInfo(threadId);
-    //         return (threadInfo.reply_count || 0) + 1; // +1 for the original post
-    //     } catch (error) {
-    //         console.warn('Failed to get posts count:', error);
-    //         return 20; // Fallback
-    //     }
-    // }
 
     async createPost(threadId, content) {
         return this.request(`/api/threads/${threadId}/posts`, {

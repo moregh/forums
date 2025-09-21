@@ -90,15 +90,12 @@ class ForumApp {
     }
     async navigateToThread(threadId, threadData = null) {
         if (this.navigationLock) {
-            console.log('Navigation locked, ignoring click');
             return;
         }
 
         this.navigationLock = true;
 
         try {
-            console.log('Navigating to thread:', threadId);
-            
             // Store thread data temporarily if provided
             if (threadData) {
                 this.tempThreadData = threadData;
