@@ -38,15 +38,12 @@ class PaginationHelper {
 
         let html = `<div class="pagination" id="${containerId}">`;
 
-        // Previous button
         if (hasPrev) {
             html += `<button class="pagination-btn" data-page="${currentPage - 1}">← Previous</button>`;
         }
 
-        // Current page info
         html += `<span class="pagination-info">Page ${currentPage} of ${totalPages}</span>`;
 
-        // Next button
         if (hasNext) {
             html += `<button class="pagination-btn" data-page="${currentPage + 1}">Next →</button>`;
         }
@@ -64,16 +61,13 @@ class PaginationHelper {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        // Remove existing listeners
         container.removeEventListener('click', container._paginationHandler);
 
-        // Add new listener
         container._paginationHandler = (event) => {
             if (event.target.classList.contains('pagination-btn')) {
                 const page = parseInt(event.target.dataset.page, 10);
                 if (page && onPageChange) {
                     onPageChange(page);
-                    // Scroll to top after page change
                     setTimeout(() => {
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                     }, 100);

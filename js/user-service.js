@@ -134,7 +134,6 @@ class UserService {
      * @returns {string} HTML string for avatar
      */
     getAvatarContent(userInfo) {
-        // If no avatar URL or it's a default/placeholder path, show initials
         if (!userInfo.avatar_url ||
             userInfo.avatar_url === '/static/default-avatar.png' ||
             userInfo.avatar_url === 'default-avatar.png' ||
@@ -145,7 +144,6 @@ class UserService {
             return `<div class="avatar-initials">${initials}</div>`;
         }
 
-        // For valid avatar URLs, use img with proper error handling
         const avatarId = `avatar-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
         return `<img id="${avatarId}"
@@ -167,13 +165,11 @@ class UserService {
         const cleaned = username.trim().toUpperCase();
         if (cleaned.length === 1) return cleaned;
 
-        // Try to get first letter of first and last "word"
         const parts = cleaned.split(/[\s_-]+/).filter(part => part.length > 0);
         if (parts.length >= 2) {
             return parts[0].charAt(0) + parts[parts.length - 1].charAt(0);
         }
 
-        // Fallback to first two characters or just first character
         return cleaned.length >= 2 ? cleaned.substring(0, 2) : cleaned.charAt(0);
     }
 
@@ -328,14 +324,11 @@ class UserService {
      * @param {number} threadId - The thread ID to navigate to
      */
     navigateToThread(threadId) {
-        // Close any open modals first
         this.modalManager.closeAllModals();
 
-        // Navigate to the thread using the global router
         if (window.forum && window.forum.router) {
             window.forum.router.navigate(`/threads/${threadId}`);
         } else if (window.location) {
-            // Fallback if router is not available
             window.location.hash = `#/threads/${threadId}`;
             window.location.reload();
         }
@@ -346,7 +339,6 @@ class UserService {
      * @param {HTMLElement} container - Container element to search for usernames
      */
     setupUsernameClickHandlers(container = document) {
-        // Find all elements with username data or class
         const usernameElements = container.querySelectorAll('[data-user-id], .username[data-user-id], .post-author[data-user-id]');
 
         usernameElements.forEach(element => {

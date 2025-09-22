@@ -46,7 +46,6 @@ class ThreadController {
 
             this.setupThreadInteractions();
 
-            // Only scroll on initial load (page 1) to avoid pagination scroll conflicts
             if (page === 1) {
                 setTimeout(() => {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
