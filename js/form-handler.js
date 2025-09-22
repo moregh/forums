@@ -1,7 +1,3 @@
-/**
- * Form Handler for the forum application
- * Provides generic form submission, validation, and state management
- */
 class FormHandler {
     constructor(api, notificationManager) {
         this.api = api;
@@ -10,13 +6,6 @@ class FormHandler {
         this.setupAutoSave();
     }
 
-    /**
-     * Handle form submission with validation and error handling
-     * @param {HTMLFormElement} form - Form element
-     * @param {Function} submitCallback - Function to handle form submission
-     * @param {Object} options - Configuration options
-     * @returns {Promise} Submission promise
-     */
     async handleSubmit(form, submitCallback, options = {}) {
         const {
             validation = null,
@@ -86,13 +75,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Handle authentication forms (login/register)
-     * @param {HTMLFormElement} form - Form element
-     * @param {string} type - 'login' or 'register'
-     * @param {Function} onSuccess - Success callback
-     * @returns {Promise} Submission promise
-     */
     async handleAuthForm(form, type, onSuccess) {
         const validationRules = type === 'login' 
             ? { username: 'username', password: 'password' }
@@ -118,14 +100,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Handle content creation forms (threads, posts, boards)
-     * @param {HTMLFormElement} form - Form element
-     * @param {string} type - 'thread', 'post', or 'board'
-     * @param {Object} params - Additional parameters
-     * @param {Function} onSuccess - Success callback
-     * @returns {Promise} Submission promise
-     */
     async handleContentForm(form, type, params = {}, onSuccess) {
         const validationRules = this.getContentValidationRules(type);
         
@@ -160,14 +134,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Handle admin action forms (ban, promote, etc.)
-     * @param {HTMLFormElement} form - Form element
-     * @param {string} action - Admin action type
-     * @param {Object} params - Action parameters
-     * @param {Function} onSuccess - Success callback
-     * @returns {Promise} Submission promise
-     */
     async handleAdminForm(form, action, params = {}, onSuccess) {
         return this.handleSubmit(form, async (formData) => {
             let result;
@@ -200,11 +166,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Convert FormData to plain object
-     * @param {FormData} formData - FormData object
-     * @returns {Object} Plain object
-     */
     formDataToObject(formData) {
         const object = {};
         for (const [key, value] of formData.entries()) {
@@ -221,11 +182,6 @@ class FormHandler {
         return object;
     }
 
-    /**
-     * Show form validation errors
-     * @param {HTMLFormElement} form - Form element
-     * @param {Object} errors - Error object
-     */
     showFormErrors(form, errors) {
         this.clearFormErrors(form);
 
@@ -248,21 +204,11 @@ class FormHandler {
         }
     }
 
-    /**
-     * Clear form validation errors
-     * @param {HTMLFormElement} form - Form element
-     */
     clearFormErrors(form) {
         form.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
         form.querySelectorAll('.error-container, .general-error').forEach(el => el.remove());
     }
 
-    /**
-     * Set form loading state
-     * @param {HTMLFormElement} form - Form element
-     * @param {boolean} loading - Loading state
-     * @param {string} message - Loading message
-     */
     setFormLoading(form, loading, message = 'Loading...') {
         const submitBtn = form.querySelector('button[type="submit"]');
         const inputs = form.querySelectorAll('input, textarea, select, button');
@@ -285,11 +231,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Mark form as submitting to prevent duplicates
-     * @param {HTMLFormElement} form - Form element
-     * @param {boolean} submitting - Submitting state
-     */
     setFormSubmitting(form, submitting) {
         if (submitting) {
             this.activeForms.set(form, Date.now());
@@ -298,28 +239,15 @@ class FormHandler {
         }
     }
 
-    /**
-     * Check if form is currently submitting
-     * @param {HTMLFormElement} form - Form element
-     * @returns {boolean} True if submitting
-     */
     isFormSubmitting(form) {
         return this.activeForms.has(form);
     }
 
-    /**
-     * Clear form fields
-     * @param {HTMLFormElement} form - Form element
-     */
     clearForm(form) {
         form.reset();
         this.clearFormErrors(form);
     }
 
-    /**
-     * Close modal containing the form
-     * @param {HTMLFormElement} form - Form element
-     */
     closeFormModal(form) {
         const modal = form.closest('.modal');
         if (modal) {
@@ -327,12 +255,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Create error container element
-     * @param {Array|string} errors - Error messages
-     * @param {string} className - CSS class
-     * @returns {HTMLElement} Error container
-     */
     createErrorContainer(errors, className = 'error-container') {
         const container = document.createElement('div');
         container.className = className;
@@ -348,11 +270,6 @@ class FormHandler {
         return container;
     }
 
-    /**
-     * Insert error container after form field
-     * @param {HTMLElement} field - Form field
-     * @param {HTMLElement} errorContainer - Error container
-     */
     insertErrorAfterField(field, errorContainer) {
         const wrapper = field.parentElement;
         if (wrapper.nextSibling) {
@@ -362,11 +279,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Get validation rules for content types
-     * @param {string} type - Content type
-     * @returns {Object} Validation rules
-     */
     getContentValidationRules(type) {
         switch (type) {
             case 'thread':
@@ -381,11 +293,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Get success message for content types
-     * @param {string} type - Content type
-     * @returns {string} Success message
-     */
     getContentSuccessMessage(type) {
         switch (type) {
             case 'thread':
@@ -401,11 +308,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Get success message for admin actions
-     * @param {string} action - Admin action
-     * @returns {string} Success message
-     */
     getAdminSuccessMessage(action) {
         switch (action) {
             case 'ban':
@@ -421,9 +323,6 @@ class FormHandler {
         }
     }
 
-    /**
-     * Setup auto-save functionality
-     */
     setupAutoSave() {
         let autoSaveTimer;
         
@@ -437,10 +336,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Save form field value as draft
-     * @param {HTMLElement} field - Form field
-     */
     saveDraft(field) {
         const form = field.closest('form');
         if (!form || !form.id) return;
@@ -449,21 +344,11 @@ class FormHandler {
         localStorage.setItem(`forum_draft_${draftKey}`, field.value);
     }
 
-    /**
-     * Load draft value for form field
-     * @param {string} formId - Form ID
-     * @param {string} fieldName - Field name
-     * @returns {string} Draft value
-     */
     loadDraft(formId, fieldName) {
         const draftKey = `${formId}_${fieldName}`;
         return localStorage.getItem(`forum_draft_${draftKey}`) || '';
     }
 
-    /**
-     * Clear all drafts for a form
-     * @param {string} formId - Form ID
-     */
     clearDraft(formId) {
         if (!formId) return;
         
@@ -474,10 +359,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Setup form with auto-save and draft loading
-     * @param {HTMLFormElement} form - Form element
-     */
     setupAutoSaveForm(form) {
         if (!form.id) {
             form.id = `form_${Date.now()}`;
@@ -495,9 +376,6 @@ class FormHandler {
         });
     }
 
-    /**
-     * Cleanup form handler
-     */
     destroy() {
         this.activeForms.clear();
     }
