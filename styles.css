@@ -18,6 +18,26 @@
   --shadow: rgba(0,0,0,0.4);
   --overlay-bg: rgba(26,26,26,0.8);
 }
+/* Global link styles */
+a {
+  color: var(--primary);
+  text-decoration: none;
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+a:hover {
+  color: var(--primary-dark);
+  text-decoration: underline;
+  text-decoration-color: var(--primary-dark);
+}
+
+a:visited {
+  color: #b668d4; /* subtle purple for visited links, fits dark theme */
+}
+
+a:active {
+  color: var(--danger);
+}
 
 *{box-sizing:border-box;margin:0;padding:0;transition:background-color .2s ease,border-color .2s ease,color .2s ease}
 body{
@@ -100,6 +120,27 @@ body{
 .post-actions{display:flex;gap:.25rem}
 .edited-badge{font-size:.8rem;color:#17a2b8;background:#2d3f4a;padding:.2rem .5rem;border-radius:4px}
 .post-content{line-height:1.6;color:#ccc}
+.post-content a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-decoration-color: var(--primary);
+  transition: color 0.2s ease, text-decoration-color 0.2s ease;
+}
+
+.post-content a:hover {
+  color: var(--primary-dark);
+  text-decoration-color: var(--primary-dark);
+}
+
+.post-content a:visited {
+  color: #9b59b6;
+  text-decoration-color: #9b59b6;
+}
+
+.post-content a:active {
+  color: var(--danger);
+  text-decoration-color: var(--danger);
+}
 
 .pagination{display:flex;justify-content:center;align-items:center;margin:2rem 0;gap:.5rem}
 .pagination-btn{padding:.5rem .75rem;border:1px solid var(--border);background:var(--card-bg);color:#e0e0e0;cursor:pointer;border-radius:4px;transition:all .2s;text-decoration:none;font-size:.9rem}
