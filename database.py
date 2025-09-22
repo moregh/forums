@@ -139,20 +139,100 @@ class DatabaseManager:
         """Update user profile fields"""
         if not update_fields:
             return
-        
+
         field_updates = []
         values = []
-        
+
         for field, value in update_fields.items():
             field_updates.append(f"{field} = ?")
             values.append(value)
-        
+
         values.append(user_id)
-        
+
         self.execute_query(
             f"UPDATE users SET {', '.join(field_updates)}, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?",
             tuple(values)
         )
+
+    def get_user_info(self, user_id: int) -> Optional[Dict]:
+        """Get user info with statistics for display in info cards"""
+        user = self.execute_query("""
+            SELECT
+                u.user_id,
+                u.username,
+                u.email,
+                u.is_admin,
+                u.is_banned,
+                u.join_date,
+                u.last_activity,
+                u.post_count,
+                u.avatar_url,
+                COUNT(DISTINCT t.thread_id) as thread_count,
+                COALESCE(MAX(p.timestamp), 0) as last_post_at,
+                CASE
+                    WHEN u.last_activity > ? THEN 'online'
+                    WHEN u.last_activity > ? THEN 'recently_active'
+                    ELSE 'offline'
+                END as activity_status,
+                CASE
+                    WHEN u.post_count >= 1000 THEN 'veteran'
+                    WHEN u.post_count >= 500 THEN 'active'
+                    WHEN u.post_count >= 100 THEN 'regular'
+                    WHEN u.post_count >= 10 THEN 'member'
+                    ELSE 'newcomer'
+                END as user_rank,
+                ROUND(
+                    CASE
+                        WHEN (? - u.join_date) > 0
+                        THEN u.post_count / ((? - u.join_date) / 86400.0)
+                        ELSE 0
+                    END, 2
+                ) as posts_per_day
+            FROM users u
+            LEFT JOIN threads t ON u.user_id = t.user_id AND t.deleted = FALSE
+            LEFT JOIN posts p ON u.user_id = p.user_id AND p.deleted = FALSE
+            WHERE u.user_id = ?
+            GROUP BY u.user_id
+        """, (
+            timestamp() - 900,    # 15 minutes ago for online status
+            timestamp() - 3600,   # 1 hour ago for recently active
+            timestamp(),          # current time for posts per day calculation
+            timestamp(),          # current time for posts per day calculation
+            user_id
+        ), fetch_one=True)
+
+        if not user:
+            return None
+
+        user_dict = dict(user)
+
+        # Get user's recent posts for additional context
+        recent_posts = self.execute_query("""
+            SELECT p.timestamp, t.title as thread_title, t.thread_id
+            FROM posts p
+            JOIN threads t ON p.thread_id = t.thread_id
+            WHERE p.user_id = ? AND p.deleted = FALSE AND t.deleted = FALSE
+            ORDER BY p.timestamp DESC
+            LIMIT 3
+        """, (user_id,))
+
+        user_dict['recent_posts'] = [dict(post) for post in recent_posts]
+
+        # Calculate days since joining
+        days_since_join = max(1, (timestamp() - user_dict['join_date']) / 86400.0)
+        user_dict['days_since_join'] = int(days_since_join)
+
+        # Add rank description
+        rank_descriptions = {
+            'veteran': 'Forum Veteran',
+            'active': 'Active Member',
+            'regular': 'Regular Member',
+            'member': 'Member',
+            'newcomer': 'New Member'
+        }
+        user_dict['rank_description'] = rank_descriptions.get(user_dict['user_rank'], 'Member')
+
+        return user_dict
 
     # =============================================================================
     # USER PREFERENCES
