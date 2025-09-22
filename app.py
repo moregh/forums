@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
-from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo
+from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo, PublicUserInfo
 from security import SecurityManager
 from functools import wraps
 from utils import timestamp
@@ -213,6 +213,14 @@ async def get_user_info(user_id: int, current_user: dict = Depends(get_current_u
     validate_user_exists(user_id)
     user_info = db.get_user_info(user_id)
     return UserInfo(**user_info)
+
+@app.get("/api/users/{user_id}/public", response_model=PublicUserInfo)
+async def get_public_user_info(user_id: int):
+    validate_user_exists(user_id)
+    user_info = db.get_user_info(user_id)
+    if not user_info:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    return PublicUserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/preferences")
 async def get_user_preferences(user_id: int, current_user: dict = Depends(get_current_user)):

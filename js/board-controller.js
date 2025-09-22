@@ -21,6 +21,8 @@ class BoardController {
             
             this.state.setState({ boards, loading: false });
 
+            this.setupBoardInteractions();
+
             // Ensure scroll happens after DOM updates
             setTimeout(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -55,6 +57,8 @@ class BoardController {
                 totalPages,
                 loading: false
             });
+
+            this.setupBoardInteractions();
 
             // Ensure scroll happens after DOM updates
             setTimeout(() => {
@@ -152,7 +156,7 @@ class BoardController {
                     </span>
                     ${board.last_post_username ? `
                         <span class="stat-item last-post">
-                            <small>Last: ${UIComponents.escapeHtml(board.last_post_username)}</small>
+                            <small>Last: <span data-user-id="${board.last_post_user_id || ''}">${UIComponents.escapeHtml(board.last_post_username)}</span></small>
                             <small>${board.formattedLastPost}</small>
                         </span>
                     ` : '<span class="stat-item"><small>No recent activity</small></span>'}
@@ -167,11 +171,11 @@ class BoardController {
         }
 
         return threads.map(thread => `
-            <div class="thread-row ${thread.sticky ? 'sticky' : ''}" data-thread-id="${thread.thread_id}">
+            <div class="thread-row ${thread.sticky ? 'sticky' : ''}" data-thread-id="${thread.thread_id}" onclick="boardController.navigateToThread(${thread.thread_id})">
                 <div class="thread-info">
                     <h4>${UIComponents.escapeHtml(thread.title)}</h4>
                     <div class="thread-meta">
-                        by ${UIComponents.escapeHtml(thread.username)} • ${thread.formattedDate}
+                        by <span class="thread-author" data-user-id="${thread.user_id}">${UIComponents.escapeHtml(thread.username)}</span> • ${thread.formattedDate}
                         ${thread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
                         ${thread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
                     </div>
@@ -188,7 +192,7 @@ class BoardController {
                     </div>
                     ${thread.last_post_username ? `
                         <div class="last-post">
-                            <div class="last-post-user">${UIComponents.escapeHtml(thread.last_post_username)}</div>
+                            <div class="last-post-user" data-user-id="${thread.last_post_user_id || ''}">${UIComponents.escapeHtml(thread.last_post_username)}</div>
                             <div class="last-post-time">${UIComponents.formatDate(thread.last_post_at)}</div>
                         </div>
                     ` : ''}
@@ -463,6 +467,17 @@ class BoardController {
 
     navigateToThread(threadId, threadData = null) {
         this.router.navigate(`/threads/${threadId}`);
+    }
+
+    setupBoardInteractions() {
+        // Set up thread row click handlers
+        const threadRows = document.querySelectorAll('.thread-row');
+        threadRows.forEach(row => {
+            if (!row.hasAttribute('data-click-handler')) {
+                row.style.cursor = 'pointer';
+                row.setAttribute('data-click-handler', 'true');
+            }
+        });
     }
 
     destroy() {

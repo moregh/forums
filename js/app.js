@@ -15,6 +15,7 @@ class ForumApp {
         this.threadService = new ThreadService(this.api, this.notifications);
         this.postService = new PostService(this.api, this.notifications);
         this.adminService = new AdminService(this.api, this.notifications);
+        this.userService = new UserService(this.api, this.modalManager, this.notifications);
         
         // Initialize controllers
         this.authController = new AuthController(
@@ -92,6 +93,9 @@ class ForumApp {
         
         // Initialize enhancements
         this.initializeEnhancements();
+
+        // Set up username click handlers
+        this.initializeUsernameHandlers();
     }
 
     async loadInitialData() {
@@ -112,6 +116,7 @@ class ForumApp {
         window.adminController = this.adminController;
         window.navigationManager = this.navigationManager;
         window.notificationManager = this.notifications;
+        window.userService = this.userService;
         
         // Keep forum reference for backward compatibility
         window.forum = {
@@ -165,6 +170,9 @@ class ForumApp {
             makeUserAdmin: (userId) => this.adminController.promoteUser(userId),
             removeUserAdmin: (userId) => this.adminController.demoteUser(userId),
             
+            // User info methods
+            showUserInfo: (userId) => this.userService.showUserInfo(userId),
+
             // Utility methods
             createModal: (content) => this.modalManager.createModal(content),
             showError: (message) => this.notifications.showError(message),
@@ -178,6 +186,32 @@ class ForumApp {
         this.setupAutoSave();
         this.loadTheme();
         this.setupPeriodicTasks();
+    }
+
+    initializeUsernameHandlers() {
+        // Set up initial username click handlers
+        this.userService.setupUsernameClickHandlers();
+
+        // Set up a MutationObserver to automatically add handlers to new content
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList') {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            this.userService.setupUsernameClickHandlers(node);
+                        }
+                    });
+                }
+            });
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // Store observer for cleanup
+        this._usernameObserver = observer;
     }
 
     setupKeyboardShortcuts() {
@@ -334,7 +368,12 @@ class ForumApp {
         if (this.modalManager) this.modalManager.destroy();
         if (this.notifications) this.notifications.destroy();
         if (this.formHandler) this.formHandler.destroy();
-        
+
+        // Cleanup username observer
+        if (this._usernameObserver) {
+            this._usernameObserver.disconnect();
+        }
+
         // Clear global references
         delete window.authController;
         delete window.boardController;
@@ -342,6 +381,7 @@ class ForumApp {
         delete window.adminController;
         delete window.navigationManager;
         delete window.notificationManager;
+        delete window.userService;
         delete window.forum;
     }
 }

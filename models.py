@@ -47,6 +47,7 @@ class UserResponse(BaseModel):
     avatar_url: str
 
 class UserInfo(BaseModel):
+    user_id: int
     username: str
     email: str
     is_admin: bool
@@ -60,7 +61,7 @@ class UserInfo(BaseModel):
     activity_status: str
     user_rank: str
     posts_per_day: float
-    recent_posts: list
+    recent_posts: List[Dict[str, Any]]
     days_since_join: int
     rank_description: str
 
@@ -169,5 +170,24 @@ class PostEditHistory(BaseModel):
 class PostDetailResponse(PostResponse):
     """Extended post response with edit history"""
     edit_history: Optional[List[PostEditHistory]] = None
+
+class PublicUserInfo(BaseModel):
+    """Public user info without sensitive data"""
+    user_id: int
+    username: str
+    is_admin: bool
+    is_banned: bool
+    join_date: float
+    last_activity: float
+    post_count: int
+    avatar_url: str
+    thread_count: int
+    last_post_at: float
+    activity_status: str
+    user_rank: str
+    posts_per_day: float
+    recent_posts: List[Dict[str, Any]]
+    days_since_join: int
+    rank_description: str
 
 

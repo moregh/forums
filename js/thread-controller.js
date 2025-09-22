@@ -68,7 +68,7 @@ class ThreadController {
                 <div class="thread-header">
                     <h1>${UIComponents.escapeHtml(thread.title)}</h1>
                     <div class="thread-meta">
-                        <span>by ${UIComponents.escapeHtml(thread.username)} • ${UIComponents.formatDate(thread.timestamp)}</span>
+                        <span>by <span class="thread-author" data-user-id="${thread.user_id}">${UIComponents.escapeHtml(thread.username)}</span> • ${UIComponents.formatDate(thread.timestamp)}</span>
                         ${thread.sticky ? ' • <span class="sticky-badge">Sticky</span>' : ''}
                         ${thread.locked ? ' • <span class="locked-badge">Locked</span>' : ''}
                         <span> • ${thread.reply_count} replies • ${thread.view_count} views</span>
@@ -104,7 +104,7 @@ class ThreadController {
             <div class="post" id="post-${post.post_id}" data-post-number="${index + 1}">
                 <div class="post-header">
                     <div class="post-author-info">
-                        <span class="post-author">${UIComponents.escapeHtml(post.username)}</span>
+                        <span class="post-author" data-user-id="${post.user_id}">${UIComponents.escapeHtml(post.username)}</span>
                         <span class="post-number">#${index + 1}</span>
                     </div>
                     <div class="post-meta">

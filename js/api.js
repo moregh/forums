@@ -239,4 +239,9 @@ class ForumAPI {
             method: 'POST'
         });
     }
+
+    // User info method
+    async getPublicUserInfo(userId) {
+        return this.request(`/api/users/${userId}/public`);
+    }
 }
