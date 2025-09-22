@@ -174,7 +174,7 @@ class NavigationManager {
         const quickNavItems = [
             { text: '🏠 Home', action: () => this.navigateToHome() },
             ...boards.slice(0, 10).map(board => ({
-                text: `📋 ${board.name}`,
+                text: `📋 ${UIComponents.escapeHtml(board.name)}`,
                 action: () => this.navigateToBoard(board.board_id)
             }))
         ];

@@ -195,7 +195,7 @@ class AdminController {
                         </div>
                         <div class="stat-body">
                             <div class="stat-value">${card.value.toLocaleString()}</div>
-                            <div class="stat-title">${card.title}</div>
+                            <div class="stat-title">${UIComponents.escapeHtml(card.title)}</div>
                         </div>
                     </div>
                 `).join('')}
@@ -282,7 +282,7 @@ class AdminController {
             <div class="user-row" data-user-id="${user.user_id}">
                 <div class="col-user">
                     <div class="user-profile">
-                        <div class="user-avatar">${user.username.charAt(0).toUpperCase()}</div>
+                        <div class="user-avatar">${UIComponents.escapeHtml(user.username.charAt(0).toUpperCase())}</div>
                         <div class="user-details">
                             <div class="user-name">${UIComponents.escapeHtml(user.username)}</div>
                             <div class="user-email">${UIComponents.escapeHtml(user.email)}</div>
@@ -300,7 +300,7 @@ class AdminController {
                             <div class="activity-dot"></div>
                             <div class="activity-text">
                                 <div class="activity-label">${activityInfo.label}</div>
-                                <div class="activity-desc">${activityInfo.description}</div>
+                                <div class="activity-desc">${UIComponents.escapeHtml(activityInfo.description)}</div>
                             </div>
                         </div>
                     </div>
@@ -393,7 +393,7 @@ class AdminController {
                         <div class="mini-stat-icon">${card.icon}</div>
                         <div class="mini-stat-content">
                             <div class="mini-stat-value">${card.value}</div>
-                            <div class="mini-stat-title">${card.title}</div>
+                            <div class="mini-stat-title">${UIComponents.escapeHtml(card.title)}</div>
                         </div>
                     </div>
                 `).join('')}
@@ -410,7 +410,7 @@ class AdminController {
             <div class="recent-users-list">
                 ${users.map(user => `
                     <div class="recent-user-item">
-                        <div class="user-avatar small">${user.username.charAt(0).toUpperCase()}</div>
+                        <div class="user-avatar small">${UIComponents.escapeHtml(user.username.charAt(0).toUpperCase())}</div>
                         <div class="user-info">
                             <div class="user-name">${UIComponents.escapeHtml(user.username)}</div>
                             <div class="user-activity">Last active: ${UIComponents.formatDate(user.last_activity)}</div>
@@ -475,7 +475,7 @@ class AdminController {
                 </div>
                 <div class="overview-metric">
                     <div class="metric-label">Top Poster</div>
-                    <div class="metric-value">${stats.top_posters?.[0]?.username || 'N/A'}</div>
+                    <div class="metric-value">${stats.top_posters?.[0]?.username ? UIComponents.escapeHtml(stats.top_posters[0].username) : 'N/A'}</div>
                 </div>
                 <div class="overview-metric">
                     <div class="metric-label">Forum Activity</div>
