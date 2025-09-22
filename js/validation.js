@@ -26,7 +26,6 @@ class Validation {
             errors.push('Username must be no more than 50 characters long');
         }
         
-        // Check for valid characters (letters, numbers, hyphens, underscores)
         if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
             errors.push('Username can only contain letters, numbers, hyphens, and underscores');
         }
@@ -52,7 +51,6 @@ class Validation {
         
         const trimmed = email.trim();
         
-        // Basic email regex (not perfect but good enough for client-side)
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         
         if (!emailRegex.test(trimmed)) {
@@ -382,7 +380,6 @@ class Validation {
         let sanitizedPage = 1;
         let sanitizedPerPage = 20;
         
-        // Validate page number
         if (page !== undefined && page !== null) {
             const pageNum = parseInt(page, 10);
             if (isNaN(pageNum) || pageNum < 1) {
@@ -394,7 +391,6 @@ class Validation {
             }
         }
         
-        // Validate per page
         if (perPage !== undefined && perPage !== null) {
             const perPageNum = parseInt(perPage, 10);
             if (isNaN(perPageNum) || perPageNum < 1) {

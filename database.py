@@ -15,36 +15,28 @@ def ttl_cache(maxsize: int, ttl: int):
     ttl: Time-to-live in seconds.
     """
     def decorator(func):
-        # Wrap function with lru_cache
         @lru_cache(maxsize=maxsize)
         def cached_func(*args, **kwargs):
             return func(*args, **kwargs)
         
-        # Store timestamps for cache entries
         cache_times = {}
         
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Create a cache key (same as lru_cache uses)
             cache_key = cached_func.__wrapped__.__code__.co_varnames[1:][:len(args)] + tuple(args) + tuple(sorted(kwargs.items()))
             current_time = timestamp()
             
-            # Check if cache entry exists and is still valid
             if cache_key in cache_times:
                 if current_time - cache_times[cache_key] < ttl:
-                    # Cache hit and not expired
                     return cached_func(*args, **kwargs)
                 else:
-                    # Cache expired, evict it
                     cached_func.cache_clear()  # Clear the specific entry
                     del cache_times[cache_key]
             
-            # Cache miss or expired, call function and store result
             result = cached_func(*args, **kwargs)
             cache_times[cache_key] = current_time
             return result
         
-        # Expose cache_clear method to clear the cache
         wrapper.cache_clear = cached_func.cache_clear  # type: ignore
         return wrapper
     return decorator
@@ -74,9 +66,6 @@ class DatabaseManager:
             conn.commit()
             return cursor.lastrowid  # type: ignore
 
-    # =============================================================================
-    # USER OPERATIONS
-    # =============================================================================
     
     @lru_cache(maxsize=512)
     def get_user_by_username(self, username: str) -> Optional[Dict]:
@@ -254,7 +243,6 @@ class DatabaseManager:
 
         user_dict = dict(user)
 
-        # Get user's recent posts for additional context
         recent_posts = self.execute_query("""
             SELECT p.timestamp, t.title as thread_title, t.thread_id
             FROM posts p
@@ -266,11 +254,9 @@ class DatabaseManager:
 
         user_dict['recent_posts'] = [dict(post) for post in recent_posts]
 
-        # Calculate days since joining
         days_since_join = max(1, (timestamp() - user_dict['join_date']) / 86400.0)
         user_dict['days_since_join'] = int(days_since_join)
 
-        # Add rank description
         rank_descriptions = {
             'veteran': 'Forum Veteran',
             'active': 'Active Member',
@@ -282,9 +268,6 @@ class DatabaseManager:
 
         return user_dict
 
-    # =============================================================================
-    # USER PREFERENCES
-    # =============================================================================
     
     @ttl_cache(maxsize=256, ttl=60)
     def get_user_preferences(self, user_id: int) -> Optional[Dict]:
@@ -324,9 +307,6 @@ class DatabaseManager:
                 (user_id,)
             )
 
-    # =============================================================================
-    # BOARD OPERATIONS
-    # =============================================================================
     @ttl_cache(maxsize=10, ttl=3600)
     def get_all_boards(self) -> List[Dict]:
         """Get all visible boards"""
@@ -340,13 +320,11 @@ class DatabaseManager:
             (name, description, creator_id)
         )
         
-        # Add creator as moderator
         self.execute_insert(
             "INSERT INTO board_moderators (board_id, user_id, assigned_by) VALUES (?, ?, ?)",
             (board_id, creator_id, creator_id)
         )
         
-        # Initialize board stats
         self.execute_insert(
             "INSERT INTO board_stats (board_id, thread_count, post_count) VALUES (?, 0, 0)",
             (board_id,)
@@ -373,9 +351,6 @@ class DatabaseManager:
         )
         return board is not None
 
-    # =============================================================================
-    # THREAD OPERATIONS
-    # =============================================================================
     
     @ttl_cache(maxsize=128, ttl=60)
     def get_threads_by_board(self, board_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
@@ -388,7 +363,6 @@ class DatabaseManager:
             LIMIT ? OFFSET ?
         """, (board_id, per_page, offset))
         
-        # Map view fields to expected model fields
         mapped_threads = []
         for thread in threads:
             thread_dict = dict(thread)
@@ -421,13 +395,11 @@ class DatabaseManager:
         """Create a new thread with initial post"""
         current_time = timestamp()
         
-        # Create thread
         thread_id = self.execute_insert("""
             INSERT INTO threads (board_id, user_id, title, timestamp, last_post_at, last_post_user_id)
             VALUES (?, ?, ?, ?, ?, ?)
         """, (board_id, user_id, title, current_time, current_time, user_id))
         
-        # Create initial post
         self.execute_insert("""
             INSERT INTO posts (thread_id, user_id, content, timestamp)
             VALUES (?, ?, ?, ?)
@@ -475,9 +447,6 @@ class DatabaseManager:
             (thread_id,)
         )
 
-    # =============================================================================
-    # POST OPERATIONS
-    # =============================================================================
     @ttl_cache(maxsize=256, ttl=60)
     def get_posts_by_thread(self, thread_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
         """Get posts in a thread with pagination"""
@@ -530,7 +499,6 @@ class DatabaseManager:
         """Update post content and track edit history"""
         current_time = timestamp()
         
-        # Get current content for history
         current_post = self.execute_query(
             "SELECT content FROM posts WHERE post_id = ?",
             (post_id,),
@@ -538,13 +506,11 @@ class DatabaseManager:
         )
         
         if current_post:
-            # Store edit history
             self.execute_insert("""
                 INSERT INTO post_edits (post_id, editor_id, old_content, new_content, timestamp)
                 VALUES (?, ?, ?, ?, ?)
             """, (post_id, editor_id, current_post["content"], content, current_time))
         
-        # Update the post
         self.execute_query("""
             UPDATE posts 
             SET content = ?, 
@@ -564,7 +530,6 @@ class DatabaseManager:
     
     def restore_post(self, post_id: int):
         """Restore a deleted post"""
-        # Check if post exists and is deleted
         post = self.execute_query("""
             SELECT p.*, t.deleted as thread_deleted, b.deleted as board_deleted
             FROM posts p
@@ -598,9 +563,6 @@ class DatabaseManager:
         
         return [dict(edit) for edit in edits]
 
-    # =============================================================================
-    # SEARCH OPERATIONS
-    # =============================================================================
     
     def search_forum_content(self, query: str, search_type: str = "all", page: int = 1, per_page: int = 20) -> Dict:
         """Search across forum content"""
@@ -641,9 +603,6 @@ class DatabaseManager:
         
         return results
 
-    # =============================================================================
-    # LOGGING AND AUDIT OPERATIONS
-    # =============================================================================
     
     def log_security_audit(self, user_id: int, event_type: str, ip_address: str, 
                           user_agent: str = "", event_data: str = ""):
@@ -674,16 +633,12 @@ class DatabaseManager:
         
         return [dict(log) for log in logs]
 
-    # =============================================================================
-    # STATISTICS OPERATIONS
-    # =============================================================================
     
     @ttl_cache(maxsize=1, ttl=600)
     def get_forum_statistics(self) -> Dict:
         """Get comprehensive forum statistics"""
         stats = {}
         
-        # Total counts
         stats["total_users"] = self.execute_query(
             "SELECT COUNT(*) as count FROM users", fetch_one=True
         )["count"]
@@ -700,7 +655,6 @@ class DatabaseManager:
             "SELECT COUNT(*) as count FROM boards WHERE deleted = FALSE", fetch_one=True
         )["count"]
         
-        # Recent activity
         stats["users_online"] = self.execute_query("""
             SELECT COUNT(DISTINCT user_id) as count 
             FROM user_sessions 
@@ -713,7 +667,6 @@ class DatabaseManager:
             WHERE timestamp > ? AND deleted = FALSE
         """, (timestamp() - 86400,), fetch_one=True)["count"]  # Last 24 hours
         
-        # Top contributors
         top_posters = self.execute_query("""
             SELECT username, post_count 
             FROM users 
@@ -725,21 +678,16 @@ class DatabaseManager:
         
         return stats
 
-    # =============================================================================
-    # RATE LIMITING SUPPORT
-    # =============================================================================
     
     def check_rate_limit(self, identifier: str, action: str, limit: int, window_minutes: int = 60) -> bool:
         """Check if action is within rate limits"""
         window_start = timestamp() - (window_minutes * 60)
         
-        # Clean up old records
         self.execute_query(
             "DELETE FROM rate_limits WHERE window_start < ? AND identifier = ? AND action_type = ?",
             (window_start, identifier, action)
         )
         
-        # Check current count
         result = self.execute_query(
             "SELECT attempt_count FROM rate_limits WHERE identifier = ? AND action_type = ?",
             (identifier, action),
@@ -751,7 +699,6 @@ class DatabaseManager:
         if current_count >= limit:
             return False
         
-        # Increment counter
         self.execute_query("""
             INSERT OR REPLACE INTO rate_limits 
             (identifier, action_type, attempt_count, window_start)

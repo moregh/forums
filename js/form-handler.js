@@ -27,20 +27,16 @@ class FormHandler {
             clearOnSuccess = false
         } = options;
 
-        // Prevent duplicate submissions
         if (preventDuplicates && this.isFormSubmitting(form)) {
             return;
         }
 
         try {
-            // Mark form as submitting
             this.setFormSubmitting(form, true);
             
-            // Get form data
             const formData = new FormData(form);
             const formObject = this.formDataToObject(formData);
 
-            // Run client-side validation
             if (validation) {
                 const validationResult = validation(formObject);
                 if (!validationResult.isValid) {
@@ -49,16 +45,12 @@ class FormHandler {
                 }
             }
 
-            // Clear existing errors
             this.clearFormErrors(form);
 
-            // Set loading state
             this.setFormLoading(form, true, loadingMessage);
 
-            // Call submission handler
             const result = await submitCallback(formObject, formData, form);
 
-            // Handle success
             if (result !== false) {
                 this.notifications.showSuccess(successMessage);
                 
@@ -78,7 +70,6 @@ class FormHandler {
         } catch (error) {
             console.error('Form submission error:', error);
             
-            // Handle different error types
             if (error.name === 'ValidationError' && error.details) {
                 this.showFormErrors(form, error.details);
             } else {
@@ -218,7 +209,6 @@ class FormHandler {
         const object = {};
         for (const [key, value] of formData.entries()) {
             if (object[key]) {
-                // Handle multiple values for same key
                 if (Array.isArray(object[key])) {
                     object[key].push(value);
                 } else {
@@ -252,7 +242,6 @@ class FormHandler {
             }
         });
 
-        // Focus first error field
         const firstErrorField = form.querySelector('.error');
         if (firstErrorField) {
             firstErrorField.focus();
@@ -494,7 +483,6 @@ class FormHandler {
             form.id = `form_${Date.now()}`;
         }
 
-        // Load drafts for existing fields
         const fields = form.querySelectorAll('textarea, input[type="text"]');
         fields.forEach(field => {
             if (field.name) {

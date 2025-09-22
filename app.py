@@ -26,7 +26,6 @@ def audit_action(action_type: str, target_type: str = "user"):
             current_user = kwargs.get('current_user')
             
             if not request:
-                # Try to get request from args if not in kwargs
                 for arg in args:
                     if hasattr(arg, 'client'):
                         request = arg
@@ -66,19 +65,15 @@ def audit_action(action_type: str, target_type: str = "user"):
 
 
 
-# FastAPI app initialization
 app = FastAPI(title="Forum API", description="RESTful API for forum system", version="1.0.0")
 
-# Global instances
 security = HTTPBearer()
 security_manager = SecurityManager(secret_key=SECRET_KEY)
 db = DatabaseManager(DB_PATH)
 
-# Middleware
 app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
-# Dependencies
 async def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "[unknown]"
 
@@ -127,7 +122,6 @@ def validate_admin_action(target_user: dict, current_user: dict, action: str):
         if action == "ban":
             raise HTTPException(status.HTTP_400_BAD_REQUEST, message)
 
-# Authentication endpoints
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(user_data: UserRegister, request: Request):
     client_ip = await get_client_ip(request)
@@ -184,7 +178,6 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
         user=UserResponse(**current_user)
     )
 
-# User endpoints
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 async def get_user(user_id: int):
     user = validate_user_exists(user_id)
@@ -240,7 +233,6 @@ async def update_user_preferences(user_id: int, preferences_data: dict, current_
     db.update_user_preferences(user_id, filtered_prefs)
     return db.get_user_preferences(user_id)
 
-# Admin user management
 @app.get("/api/admin/users")
 async def get_all_users(page: int = 1, per_page: int = 20, current_user: dict = Depends(require_admin)):
     return db.get_all_users(page, per_page)
@@ -286,7 +278,6 @@ async def remove_user_admin(user_id: int, request: Request, current_user: dict =
     db.log_moderation_action(current_user["user_id"], "user", user_id, "demote_admin")
     return {"message": "Admin privileges removed successfully"}
 
-# Board endpoints
 @app.get("/api/boards", response_model=List[BoardResponse])
 async def get_boards():
     boards = db.get_all_boards()
@@ -300,7 +291,6 @@ async def create_board(board_data: BoardCreate, request: Request, current_user: 
     board = db.get_board_by_id(board_id)
     return BoardResponse(**board) # type: ignore
 
-# Thread endpoints
 @app.get("/api/boards/{board_id}/threads", response_model=List[ThreadResponse])
 async def get_threads(board_id: int, page: int = 1, per_page: int = 20):
     threads = db.get_threads_by_board(board_id, page, per_page)
@@ -360,7 +350,6 @@ async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Reque
     db.log_moderation_action(current_user["user_id"], "thread", thread_id, "sticky" if sticky else "unsticky")
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
-# Post endpoints
 @app.get("/api/threads/{thread_id}/posts", response_model=List[PostResponse])
 async def get_posts(thread_id: int, page: int = 1, per_page: int = 20):
     db.increment_thread_view_count(thread_id)
@@ -461,7 +450,6 @@ async def get_post_edit_history(post_id: int, current_user: dict = Depends(get_c
     
     return db.get_post_edit_history(post_id)
 
-# Search and statistics
 @app.get("/api/search")
 async def search_forum(q: str, type: str = "all", page: int = 1, per_page: int = 20):
     if len(q.strip()) < 3:
@@ -476,7 +464,6 @@ async def get_forum_statistics():
 async def get_moderation_log(page: int = 1, per_page: int = 50, current_user: dict = Depends(require_admin)):
     return db.get_moderation_log(page, per_page)
 
-# Error handling
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(

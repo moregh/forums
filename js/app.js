@@ -4,20 +4,17 @@ class ForumApp {
         this.state = new ForumState();
         this.router = new Router();
         
-        // Initialize managers
         this.notifications = new NotificationManager();
         this.modalManager = new ModalManager();
         this.formHandler = new FormHandler(this.api, this.notifications);
         this.navigationManager = new NavigationManager(this.router, this.state, this.notifications);
         
-        // Initialize services
         this.boardService = new BoardService(this.api, this.notifications);
         this.threadService = new ThreadService(this.api, this.notifications);
         this.postService = new PostService(this.api, this.notifications);
         this.adminService = new AdminService(this.api, this.notifications);
         this.userService = new UserService(this.api, this.modalManager, this.notifications);
         
-        // Initialize controllers
         this.authController = new AuthController(
             this.api, this.formHandler, this.notifications, 
             this.modalManager, this.router, this.state
@@ -59,14 +56,12 @@ class ForumApp {
             if (error) this.notifications.showError(error);
         });
 
-        // Router event handlers
         this.router.register('routeChanged', (route) => {
             this.navigationManager.handleRouteChange(route);
         });
     }
 
     async init() {
-        // Check for existing authentication
         if (this.api.token && this.api.user) {
             this.state.setState({ user: this.api.user });
             try {
@@ -76,25 +71,18 @@ class ForumApp {
             }
         }
 
-        // Update navigation based on auth state
         this.navigationManager.updateNavigation(this.api.user);
         
-        // Setup auth refresh timer
         this.authController.setupAuthRefresh();
         
-        // Load initial data
         await this.loadInitialData();
         
-        // Handle initial route
         this.router.handleRoute();
         
-        // Setup global references for onclick handlers
         this.setupGlobalReferences();
         
-        // Initialize enhancements
         this.initializeEnhancements();
 
-        // Set up username click handlers
         this.initializeUsernameHandlers();
     }
 
@@ -109,7 +97,6 @@ class ForumApp {
     }
 
     setupGlobalReferences() {
-        // Make controllers globally available for onclick handlers in templates
         window.authController = this.authController;
         window.boardController = this.boardController;
         window.threadController = this.threadController;
@@ -118,23 +105,19 @@ class ForumApp {
         window.notificationManager = this.notifications;
         window.userService = this.userService;
         
-        // Keep forum reference for backward compatibility
         window.forum = {
             router: this.router,
             state: this.state,
             api: this.api,
             
-            // Auth methods for backward compatibility
             logout: () => this.authController.logout(),
             handleLogin: (event) => this.authController.handleLogin(event),
             handleRegister: (event) => this.authController.handleRegister(event),
             handleAuthError: () => this.authController.handleAuthError(),
             
-            // Navigation methods
             navigateToThread: (threadId, threadData) => this.navigationManager.navigateToThread(threadId, threadData),
             navigateToBoard: (boardId) => this.navigationManager.navigateToBoard(boardId),
             
-            // Board methods for backward compatibility
             showHome: () => this.boardController.showHome(),
             showBoard: (boardId, page) => this.boardController.showBoard(boardId, page),
             showCreateBoardForm: () => this.boardController.showCreateBoardForm(),
@@ -144,7 +127,6 @@ class ForumApp {
                 { successMessage: 'Board created successfully!' }
             ),
             
-            // Thread methods for backward compatibility
             showThread: (threadId, page, threadData) => this.threadController.showThread(threadId, page, threadData),
             showCreateThreadForm: (boardId) => this.boardController.showCreateThreadForm(boardId),
             handleCreateThread: (event, boardId) => this.formHandler.handleSubmit(
@@ -156,25 +138,21 @@ class ForumApp {
             toggleThreadLock: (threadId, locked) => this.threadController.toggleThreadLock(threadId, locked),
             toggleThreadSticky: (threadId, sticky) => this.threadController.toggleThreadSticky(threadId, sticky),
             
-            // Post methods for backward compatibility
             showReplyForm: (threadId) => this.threadController.showReplyForm(threadId),
             handleCreatePost: (event, threadId) => this.threadController.handleQuickReply(event, threadId),
             editPost: (postId) => this.threadController.editPost(postId),
             handleEditPost: (event, postId) => this.threadController.updatePost(postId, new FormData(event.target).get('content')),
             deletePost: (postId) => this.threadController.deletePost(postId),
             
-            // Admin methods for backward compatibility
             showAdmin: () => this.adminController.showAdmin(),
             banUser: (userId) => this.adminController.banUser(userId),
             unbanUser: (userId) => this.adminController.unbanUser(userId),
             makeUserAdmin: (userId) => this.adminController.promoteUser(userId),
             removeUserAdmin: (userId) => this.adminController.demoteUser(userId),
             
-            // User info methods
             showUserInfo: (userId) => this.userService.showUserInfo(userId),
             navigateToThreadFromUserInfo: (threadId) => this.userService.navigateToThread(threadId),
 
-            // Utility methods
             createModal: (content) => this.modalManager.createModal(content),
             showError: (message) => this.notifications.showError(message),
             showSuccess: (message) => this.notifications.showSuccess(message),
@@ -190,10 +168,8 @@ class ForumApp {
     }
 
     initializeUsernameHandlers() {
-        // Set up initial username click handlers
         this.userService.setupUsernameClickHandlers();
 
-        // Set up a MutationObserver to automatically add handlers to new content
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList') {
@@ -211,13 +187,11 @@ class ForumApp {
             subtree: true
         });
 
-        // Store observer for cleanup
         this._usernameObserver = observer;
     }
 
     setupKeyboardShortcuts() {
         document.addEventListener('keydown', (e) => {
-            // Skip if user is typing in input/textarea
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
                 return;
             }
@@ -225,7 +199,6 @@ class ForumApp {
             const { ctrlKey, metaKey, altKey, key } = e;
             const modKey = ctrlKey || metaKey;
 
-            // Submit modal forms with Ctrl+Enter
             if (modKey && key === 'Enter') {
                 const activeForm = document.querySelector('.modal form');
                 if (activeForm) {
@@ -233,25 +206,21 @@ class ForumApp {
                 }
             }
 
-            // Alt+H for home
             if (altKey && key === 'h') {
                 e.preventDefault();
                 this.navigationManager.navigateToHome();
             }
 
-            // Alt+L for login (if not logged in)
             if (altKey && key === 'l' && !this.state.getState().user) {
                 e.preventDefault();
                 this.navigationManager.navigateToLogin();
             }
 
-            // Alt+A for admin (if admin)
             if (altKey && key === 'a' && this.state.getState().user?.is_admin) {
                 e.preventDefault();
                 this.navigationManager.navigateToAdmin();
             }
 
-            // Escape to close modals
             if (key === 'Escape') {
                 this.navigationManager.closeActiveModals();
             }
@@ -282,7 +251,6 @@ class ForumApp {
     }
 
     setupPeriodicTasks() {
-        // Refresh auth token every 25 minutes
         setInterval(() => {
             if (this.api.token && this.state.getState().user) {
                 this.authController.refreshToken().catch(() => {
@@ -291,14 +259,13 @@ class ForumApp {
             }
         }, 25 * 60 * 1000);
 
-        // Clean up old drafts every hour
         setInterval(() => {
             this.cleanupOldDrafts();
         }, 60 * 60 * 1000);
     }
 
     cleanupOldDrafts() {
-        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+        const maxAge = 7 * 24 * 60 * 60 * 1000;
         const now = Date.now();
         
         Object.keys(localStorage).forEach(key => {
@@ -310,7 +277,6 @@ class ForumApp {
                         localStorage.removeItem(`${key}_timestamp`);
                     }
                 } catch (error) {
-                    // If we can't parse timestamp, remove the draft
                     localStorage.removeItem(key);
                 }
             }
@@ -360,7 +326,6 @@ class ForumApp {
     }
 
     destroy() {
-        // Cleanup all components
         if (this.authController) this.authController.destroy();
         if (this.boardController) this.boardController.destroy();
         if (this.threadController) this.threadController.destroy();
@@ -370,12 +335,10 @@ class ForumApp {
         if (this.notifications) this.notifications.destroy();
         if (this.formHandler) this.formHandler.destroy();
 
-        // Cleanup username observer
         if (this._usernameObserver) {
             this._usernameObserver.disconnect();
         }
 
-        // Clear global references
         delete window.authController;
         delete window.boardController;
         delete window.threadController;
@@ -387,12 +350,10 @@ class ForumApp {
     }
 }
 
-// Initialize the application when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     window.forum = new ForumApp();
 });
 
-// Global error handlers
 window.addEventListener('error', (event) => {
     console.error('Global error:', event.error);
     if (window.notificationManager) {

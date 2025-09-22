@@ -45,9 +45,6 @@ class SecurityManager:
                 detail="Invalid token"
             )
 
-# =============================================================================
-# RATE LIMITING & SECURITY MIDDLEWARE
-# =============================================================================
 
 class RateLimiter:
     def __init__(self, db_path: str):
@@ -58,14 +55,12 @@ class RateLimiter:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             
-            # Clean up old records
             window_start = time.time() - (window_minutes * 60)
             cursor.execute(
                 "DELETE FROM rate_limits WHERE window_start < ? AND identifier = ? AND action_type = ?",
                 (window_start, identifier, action)
             )
             
-            # Check current count
             cursor.execute(
                 "SELECT attempt_count FROM rate_limits WHERE identifier = ? AND action_type = ?",
                 (identifier, action)
@@ -77,7 +72,6 @@ class RateLimiter:
             if current_count >= limit:
                 return False
             
-            # Increment counter
             cursor.execute("""
                 INSERT OR REPLACE INTO rate_limits 
                 (identifier, action_type, attempt_count, window_start)

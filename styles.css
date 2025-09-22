@@ -18,7 +18,6 @@
   --shadow: rgba(0,0,0,0.4);
   --overlay-bg: rgba(26,26,26,0.8);
 }
-/* Global link styles */
 a {
   color: var(--primary);
   text-decoration: none;
@@ -32,7 +31,7 @@ a:hover {
 }
 
 a:visited {
-  color: #b668d4; /* subtle purple for visited links, fits dark theme */
+  color: #b668d4;
 }
 
 a:active {
@@ -247,7 +246,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .status-value{font-size:.9rem;color:var(--text);font-weight:500}
 
 .admin-main-content{background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:2rem}
-/* Stats Cards - Reduced Size */
 .stats-cards-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:2rem}
 .stat-card{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:8px;padding:1rem;position:relative;transition:all 0.2s ease}
 .stat-card:hover{transform:translateY(-2px);box-shadow:0 4px 12px rgba(0,0,0,0.15)}
@@ -263,7 +261,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .stat-value{font-size:1.5rem;font-weight:600;color:var(--text);line-height:1.1}
 .stat-title{color:var(--muted);font-size:.8rem;margin-top:.25rem;font-weight:500}
 
-/* Dashboard Content Grid - Improved Spacing */
 .dashboard-content-grid{display:grid;grid-template-columns:1fr 1fr;gap:2rem;margin-top:2rem}
 .dashboard-panel{background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:12px;overflow:hidden;transition:all 0.2s ease}
 .dashboard-panel:hover{box-shadow:0 4px 12px rgba(0,0,0,0.1)}
@@ -301,7 +298,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .action-btn.promote{background:var(--warning);color:#212529}
 .action-btn.demote{background:#6c757d;color:#fff}
 
-/* Recent User Activity Styling */
 .recent-users-list{display:flex;flex-direction:column;gap:0.75rem}
 .recent-user-item{display:flex;align-items:center;gap:0.75rem;padding:0.75rem;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.05);transition:all 0.2s ease}
 .recent-user-item:hover{background:rgba(255,255,255,0.05);transform:translateX(4px)}
@@ -314,7 +310,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .user-status.banned{background:rgba(220,53,69,0.2);color:#dc3545}
 .user-status.user{background:rgba(52,152,219,0.2);color:#3498db}
 
-/* Recent Moderation Actions Styling */
 .moderation-log-list{display:flex;flex-direction:column;gap:0.75rem}
 .moderation-item{display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:rgba(255,255,255,0.02);border-radius:8px;border:1px solid rgba(255,255,255,0.05);transition:all 0.2s ease}
 .moderation-item:hover{background:rgba(255,255,255,0.05);transform:translateX(4px)}
@@ -332,17 +327,14 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .mod-user{font-weight:500;color:var(--primary)}
 .mod-date{opacity:0.8}
 
-/* System Overview Styling */
 .system-overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem}
 .overview-metric{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);border-radius:8px;padding:1.25rem;text-align:center;transition:all 0.2s ease}
 .overview-metric:hover{background:rgba(255,255,255,0.05);transform:translateY(-2px)}
 .metric-label{color:var(--muted);font-size:0.85rem;margin-bottom:0.5rem;font-weight:500}
 .metric-value{color:var(--text);font-size:1.8rem;font-weight:600;line-height:1}
 
-/* Empty Panel State */
 .empty-panel{text-align:center;padding:2rem;color:var(--muted);font-style:italic}
 
-/* User Info Modal Styles */
 .user-info-modal-container .modal-content {
     max-width: 500px;
     width: 90vw;
@@ -602,7 +594,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
     padding: 1rem;
 }
 
-/* Clickable username styles */
 .post-author[data-user-id],
 .thread-author[data-user-id],
 .last-post-user[data-user-id],
@@ -629,7 +620,6 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
     .overview-metric{padding:1rem}
     .metric-value{font-size:1.5rem}
 
-    /* User info modal responsive */
     .user-info-modal-container .modal-content {
         width: 95vw;
         max-width: none;
