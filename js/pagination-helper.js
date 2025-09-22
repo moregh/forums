@@ -73,6 +73,10 @@ class PaginationHelper {
                 const page = parseInt(event.target.dataset.page, 10);
                 if (page && onPageChange) {
                     onPageChange(page);
+                    // Scroll to top after page change
+                    setTimeout(() => {
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }, 100);
                 }
             }
         };

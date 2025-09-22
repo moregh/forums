@@ -60,10 +60,12 @@ class BoardController {
 
             this.setupBoardInteractions();
 
-            // Ensure scroll happens after DOM updates
-            setTimeout(() => {
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }, 0);
+            // Only scroll on initial load (page 1) to avoid pagination scroll conflicts
+            if (page === 1) {
+                setTimeout(() => {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 0);
+            }
 
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });

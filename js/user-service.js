@@ -197,8 +197,11 @@ class UserService {
             const relativeTime = this.getRelativeTime(postDate);
 
             return `
-                <div class="recent-post-item" data-thread-id="${post.thread_id}">
-                    <div class="post-thread">${this.escapeHtml(post.thread_title)}</div>
+                <div class="recent-post-item" data-thread-id="${post.thread_id}" onclick="window.userService?.navigateToThread(${post.thread_id}) || window.forum?.navigateToThreadFromUserInfo(${post.thread_id})" title="Click to view thread">
+                    <div class="post-thread">
+                        <span class="thread-link-icon">→</span>
+                        ${this.escapeHtml(post.thread_title)}
+                    </div>
                     <div class="post-time">${relativeTime}</div>
                 </div>
             `;
@@ -206,7 +209,7 @@ class UserService {
 
         return `
             <div class="recent-posts">
-                <h5>Recent Posts</h5>
+                <h5>Recent Posts <span class="recent-posts-count">(${recentPosts.length})</span></h5>
                 <div class="recent-posts-list">
                     ${postsHtml}
                 </div>
@@ -318,6 +321,24 @@ class UserService {
      */
     clearCache() {
         this.userInfoCache.clear();
+    }
+
+    /**
+     * Navigate to a thread (used by recent posts)
+     * @param {number} threadId - The thread ID to navigate to
+     */
+    navigateToThread(threadId) {
+        // Close any open modals first
+        this.modalManager.closeAllModals();
+
+        // Navigate to the thread using the global router
+        if (window.forum && window.forum.router) {
+            window.forum.router.navigate(`/threads/${threadId}`);
+        } else if (window.location) {
+            // Fallback if router is not available
+            window.location.hash = `#/threads/${threadId}`;
+            window.location.reload();
+        }
     }
 
     /**

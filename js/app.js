@@ -172,6 +172,7 @@ class ForumApp {
             
             // User info methods
             showUserInfo: (userId) => this.userService.showUserInfo(userId),
+            navigateToThreadFromUserInfo: (threadId) => this.userService.navigateToThread(threadId),
 
             // Utility methods
             createModal: (content) => this.modalManager.createModal(content),

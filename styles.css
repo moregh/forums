@@ -523,6 +523,15 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
     margin: 0 0 1rem 0;
     color: var(--text);
     font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.recent-posts-count {
+    font-size: 0.8rem;
+    color: var(--muted);
+    font-weight: normal;
 }
 
 .recent-posts-list {
@@ -546,6 +555,12 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
 .recent-post-item:hover {
     background: rgba(255, 255, 255, 0.05);
     transform: translateX(4px);
+    border-color: var(--primary);
+}
+
+.recent-post-item:active {
+    transform: translateX(2px);
+    background: rgba(52, 152, 219, 0.1);
 }
 
 .post-thread {
@@ -556,6 +571,22 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
     overflow: hidden;
     white-space: nowrap;
     margin-right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.thread-link-icon {
+    color: var(--primary);
+    font-weight: bold;
+    opacity: 0.7;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    flex-shrink: 0;
+}
+
+.recent-post-item:hover .thread-link-icon {
+    opacity: 1;
+    transform: translateX(2px);
 }
 
 .post-time {
