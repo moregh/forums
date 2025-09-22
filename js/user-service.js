@@ -59,6 +59,8 @@ class UserService {
 
         const recentPostsHtml = this.formatRecentPosts(userInfo.recent_posts);
 
+        const avatarContent = this.getAvatarContent(userInfo);
+
         const content = `
             <div class="modal-header">
                 <h3 id="user-info-title">User Information</h3>
@@ -66,9 +68,7 @@ class UserService {
             <div class="modal-body user-info-modal">
                 <div class="user-info-header">
                     <div class="user-avatar">
-                        <img src="${userInfo.avatar_url || '/static/default-avatar.png'}"
-                             alt="${userInfo.username}'s avatar"
-                             onerror="this.src='/static/default-avatar.png'">
+                        ${avatarContent}
                     </div>
                     <div class="user-basic-info">
                         <h4 class="username">
@@ -126,6 +126,55 @@ class UserService {
             width: '500px',
             closeButton: true
         });
+    }
+
+    /**
+     * Get avatar content with proper fallback handling
+     * @param {Object} userInfo - User info object
+     * @returns {string} HTML string for avatar
+     */
+    getAvatarContent(userInfo) {
+        // If no avatar URL or it's a default/placeholder path, show initials
+        if (!userInfo.avatar_url ||
+            userInfo.avatar_url === '/static/default-avatar.png' ||
+            userInfo.avatar_url === 'default-avatar.png' ||
+            userInfo.avatar_url === '' ||
+            userInfo.avatar_url === null) {
+
+            const initials = this.getUserInitials(userInfo.username);
+            return `<div class="avatar-initials">${initials}</div>`;
+        }
+
+        // For valid avatar URLs, use img with proper error handling
+        const avatarId = `avatar-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+        return `<img id="${avatarId}"
+                     src="${this.escapeHtml(userInfo.avatar_url)}"
+                     alt="${this.escapeHtml(userInfo.username)}'s avatar"
+                     onload="this.style.display='block'; this.nextElementSibling?.remove();"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                <div class="avatar-initials" style="display: none;">${this.getUserInitials(userInfo.username)}</div>`;
+    }
+
+    /**
+     * Get user initials from username
+     * @param {string} username - Username
+     * @returns {string} User initials (1-2 characters)
+     */
+    getUserInitials(username) {
+        if (!username) return '?';
+
+        const cleaned = username.trim().toUpperCase();
+        if (cleaned.length === 1) return cleaned;
+
+        // Try to get first letter of first and last "word"
+        const parts = cleaned.split(/[\s_-]+/).filter(part => part.length > 0);
+        if (parts.length >= 2) {
+            return parts[0].charAt(0) + parts[parts.length - 1].charAt(0);
+        }
+
+        // Fallback to first two characters or just first character
+        return cleaned.length >= 2 ? cleaned.substring(0, 2) : cleaned.charAt(0);
     }
 
     /**
