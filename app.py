@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
-from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse
+from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo
 from security import SecurityManager
 from functools import wraps
 from utils import timestamp
@@ -206,6 +206,13 @@ async def update_user_profile(user_id: int, update_data: dict, current_user: dic
     db.update_user_profile(user_id, filtered_updates)
     updated_user = db.get_user_by_id(user_id)
     return UserResponse(**updated_user) # type: ignore
+
+@app.get("/api/users/{user_id}/info")
+async def get_user_info(user_id: int, current_user: dict = Depends(get_current_user)):
+    validate_user_permissions(user_id, current_user, allow_self=True)
+    validate_user_exists(user_id)
+    user_info = db.get_user_info(user_id)
+    return UserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/preferences")
 async def get_user_preferences(user_id: int, current_user: dict = Depends(get_current_user)):

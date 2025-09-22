@@ -46,6 +46,25 @@ class UserResponse(BaseModel):
     post_count: int
     avatar_url: str
 
+class UserInfo(BaseModel):
+    username: str
+    email: str
+    is_admin: bool
+    is_banned: bool
+    join_date: float
+    last_activity: float
+    post_count: int
+    avatar_url: str
+    thread_count: int
+    last_post_at: float
+    activity_status: str
+    user_rank: str
+    posts_per_day: float
+    recent_posts: list
+    days_since_join: int
+    rank_description: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"

@@ -1,10 +1,53 @@
 import sqlite3
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
+from functools import lru_cache, wraps
 
 
 def timestamp() -> float:
     return datetime.now(timezone.utc).timestamp()
+
+
+def ttl_cache(maxsize: int, ttl: int):
+    """
+    Decorator to add TTL to lru_cache. Entries expire after ttl seconds.
+    maxsize: Maximum number of cache entries (from lru_cache).
+    ttl: Time-to-live in seconds.
+    """
+    def decorator(func):
+        # Wrap function with lru_cache
+        @lru_cache(maxsize=maxsize)
+        def cached_func(*args, **kwargs):
+            return func(*args, **kwargs)
+        
+        # Store timestamps for cache entries
+        cache_times = {}
+        
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Create a cache key (same as lru_cache uses)
+            cache_key = cached_func.__wrapped__.__code__.co_varnames[1:][:len(args)] + tuple(args) + tuple(sorted(kwargs.items()))
+            current_time = timestamp()
+            
+            # Check if cache entry exists and is still valid
+            if cache_key in cache_times:
+                if current_time - cache_times[cache_key] < ttl:
+                    # Cache hit and not expired
+                    return cached_func(*args, **kwargs)
+                else:
+                    # Cache expired, evict it
+                    cached_func.cache_clear()  # Clear the specific entry
+                    del cache_times[cache_key]
+            
+            # Cache miss or expired, call function and store result
+            result = cached_func(*args, **kwargs)
+            cache_times[cache_key] = current_time
+            return result
+        
+        # Expose cache_clear method to clear the cache
+        wrapper.cache_clear = cached_func.cache_clear  # type: ignore
+        return wrapper
+    return decorator
 
 
 class DatabaseManager:
@@ -35,6 +78,7 @@ class DatabaseManager:
     # USER OPERATIONS
     # =============================================================================
     
+    @lru_cache(maxsize=512)
     def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username"""
         user = self.execute_query(
@@ -44,6 +88,7 @@ class DatabaseManager:
         )
         return dict(user) if user else None
     
+    @lru_cache(maxsize=512)
     def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """Get user by ID"""
         user = self.execute_query(
@@ -53,6 +98,7 @@ class DatabaseManager:
         )
         return dict(user) if user else None
     
+    @ttl_cache(maxsize=1024, ttl=60)
     def check_user_exists(self, username: str, email: str) -> bool:
         """Check if username or email already exists"""
         existing = self.execute_query(
@@ -125,6 +171,7 @@ class DatabaseManager:
         )
         return True
     
+    @ttl_cache(maxsize=50, ttl=300)
     def get_all_users(self, page: int = 1, per_page: int = 20) -> List[Dict]:
         """Get all users with pagination"""
         offset = (page - 1) * per_page
@@ -154,6 +201,7 @@ class DatabaseManager:
             tuple(values)
         )
 
+    @ttl_cache(maxsize=1024, ttl=600)
     def get_user_info(self, user_id: int) -> Optional[Dict]:
         """Get user info with statistics for display in info cards"""
         user = self.execute_query("""
@@ -238,6 +286,7 @@ class DatabaseManager:
     # USER PREFERENCES
     # =============================================================================
     
+    @ttl_cache(maxsize=256, ttl=60)
     def get_user_preferences(self, user_id: int) -> Optional[Dict]:
         """Get user preferences"""
         prefs = self.execute_query(
@@ -278,7 +327,7 @@ class DatabaseManager:
     # =============================================================================
     # BOARD OPERATIONS
     # =============================================================================
-    
+    @ttl_cache(maxsize=10, ttl=3600)
     def get_all_boards(self) -> List[Dict]:
         """Get all visible boards"""
         boards = self.execute_query("SELECT * FROM board_summary ORDER BY name")
@@ -302,9 +351,9 @@ class DatabaseManager:
             "INSERT INTO board_stats (board_id, thread_count, post_count) VALUES (?, 0, 0)",
             (board_id,)
         )
-        
         return board_id
     
+    @lru_cache(maxsize=128)
     def get_board_by_id(self, board_id: int) -> Optional[Dict]:
         """Get board by ID"""
         board = self.execute_query(
@@ -314,6 +363,7 @@ class DatabaseManager:
         )
         return dict(board) if board else None
     
+    @lru_cache(maxsize=128)
     def board_exists(self, board_id: int) -> bool:
         """Check if board exists and is not deleted"""
         board = self.execute_query(
@@ -327,6 +377,7 @@ class DatabaseManager:
     # THREAD OPERATIONS
     # =============================================================================
     
+    @ttl_cache(maxsize=128, ttl=60)
     def get_threads_by_board(self, board_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
         """Get threads in a board with pagination"""
         offset = (page - 1) * per_page
@@ -348,6 +399,7 @@ class DatabaseManager:
         
         return mapped_threads
     
+    @ttl_cache(maxsize=256, ttl=60)
     def get_thread_by_id(self, thread_id: int) -> Optional[Dict]:
         """Get thread by ID"""
         thread = self.execute_query("""
@@ -383,6 +435,7 @@ class DatabaseManager:
         
         return thread_id
     
+    @ttl_cache(maxsize=256, ttl=60)
     def thread_exists_and_accessible(self, thread_id: int) -> Optional[Dict]:
         """Check if thread exists and is accessible (not deleted, board not deleted)"""
         thread = self.execute_query("""
@@ -425,7 +478,7 @@ class DatabaseManager:
     # =============================================================================
     # POST OPERATIONS
     # =============================================================================
-    
+    @ttl_cache(maxsize=256, ttl=60)
     def get_posts_by_thread(self, thread_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
         """Get posts in a thread with pagination"""
         offset = (page - 1) * per_page
@@ -440,6 +493,7 @@ class DatabaseManager:
         
         return [dict(post) for post in posts]
     
+    @ttl_cache(maxsize=512, ttl=300)
     def get_post_by_id(self, post_id: int) -> Optional[Dict]:
         """Get post by ID"""
         post = self.execute_query("""
@@ -451,6 +505,7 @@ class DatabaseManager:
         
         return dict(post) if post else None
     
+    @ttl_cache(maxsize=512, ttl=300)
     def get_post_with_context(self, post_id: int) -> Optional[Dict]:
         """Get post with thread and board context for permission checking"""
         post = self.execute_query("""
@@ -530,6 +585,7 @@ class DatabaseManager:
         )
         return True
     
+    @ttl_cache(maxsize=128, ttl=300)
     def get_post_edit_history(self, post_id: int) -> List[Dict]:
         """Get edit history for a post"""
         edits = self.execute_query("""
@@ -622,6 +678,7 @@ class DatabaseManager:
     # STATISTICS OPERATIONS
     # =============================================================================
     
+    @ttl_cache(maxsize=1, ttl=600)
     def get_forum_statistics(self) -> Dict:
         """Get comprehensive forum statistics"""
         stats = {}
