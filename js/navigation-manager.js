@@ -533,6 +533,5 @@ class NavigationManager {
     }
 
     destroy() {
-        // Remove event listeners if needed
     }
 }

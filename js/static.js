@@ -1,4 +1,3 @@
-// static.js
 const Templates = {
     navigationLoggedIn: (user) => `
         <div class="nav-left">
@@ -83,7 +82,6 @@ const Templates = {
     `,
 
     thread: (threadInfo, posts, currentUser, page, totalPages) => {
-        // Ensure we have valid data
         if (!threadInfo || !Array.isArray(posts)) {
             console.error('Invalid thread data:', { threadInfo, posts });
             return `

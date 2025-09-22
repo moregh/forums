@@ -32,7 +32,6 @@ class ModalManager {
 
         const modalId = `modal-${++this.modalCounter}`;
         
-        // Create modal structure
         const modal = document.createElement('div');
         modal.className = className;
         modal.id = modalId;
@@ -46,7 +45,6 @@ class ModalManager {
         if (width !== 'auto') modalContent.style.width = width;
         if (height !== 'auto') modalContent.style.height = height;
 
-        // Add close button if requested
         if (closeButton) {
             const closeBtn = document.createElement('span');
             closeBtn.className = 'close';
@@ -56,14 +54,12 @@ class ModalManager {
             modalContent.appendChild(closeBtn);
         }
 
-        // Add content
         const contentContainer = document.createElement('div');
         contentContainer.innerHTML = content;
         modalContent.appendChild(contentContainer);
 
         modal.appendChild(modalContent);
 
-        // Store modal configuration
         modal._modalConfig = {
             backdrop,
             keyboard,
@@ -72,7 +68,6 @@ class ModalManager {
             onDestroy
         };
 
-        // Set up backdrop click handling
         if (backdrop) {
             modal.addEventListener('click', (e) => {
                 if (e.target === modal) {
@@ -81,13 +76,10 @@ class ModalManager {
             });
         }
 
-        // Add to active modals tracking
         this.activeModals.add(modal);
 
-        // Show the modal
         this.showModal(modal, focus);
 
-        // Call onShow callback
         if (onShow) {
             onShow(modal);
         }
@@ -137,14 +129,12 @@ class ModalManager {
         const form = modal.querySelector(`#${formId}`);
         const cancelBtn = modal.querySelector('[data-action="cancel"]');
 
-        // Handle form submission
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const formData = new FormData(form);
             const formObject = Object.fromEntries(formData.entries());
 
-            // Run validation if provided
             if (validation) {
                 const validationResult = validation(formObject);
                 if (!validationResult.isValid) {
@@ -153,11 +143,9 @@ class ModalManager {
                 }
             }
 
-            // Clear any existing errors
             this.clearFormErrors(form);
 
             try {
-                // Disable form during submission
                 this.setFormLoading(form, true);
                 
                 const result = await onSubmit(formObject, form, modal);
@@ -172,12 +160,10 @@ class ModalManager {
             }
         });
 
-        // Handle cancel button
         cancelBtn.addEventListener('click', () => {
             this.closeModal(modal);
         });
 
-        // Focus first input
         const firstInput = form.querySelector('input, textarea, select');
         if (firstInput) {
             setTimeout(() => firstInput.focus(), 100);
@@ -229,7 +215,6 @@ class ModalManager {
         const confirmBtn = modal.querySelector('[data-action="confirm"]');
         const cancelBtn = modal.querySelector('[data-action="cancel"]');
 
-        // Handle confirmation
         confirmBtn.addEventListener('click', async () => {
             try {
                 confirmBtn.disabled = true;
@@ -242,19 +227,16 @@ class ModalManager {
                 }
             } catch (error) {
                 console.error('Confirmation error:', error);
-                // Could show error in modal or close it
             } finally {
                 confirmBtn.disabled = false;
                 confirmBtn.textContent = confirmText;
             }
         });
 
-        // Handle cancel
         cancelBtn.addEventListener('click', () => {
             this.closeModal(modal);
         });
 
-        // Focus confirm button by default
         setTimeout(() => confirmBtn.focus(), 100);
 
         return modal;
@@ -299,7 +281,6 @@ class ModalManager {
             this.closeModal(modal);
         });
 
-        // Focus OK button
         setTimeout(() => okBtn.focus(), 100);
 
         return modal;
@@ -343,25 +324,19 @@ class ModalManager {
      * @param {boolean} focus - Whether to focus the modal
      */
     showModal(modal, focus = true) {
-        // Add to DOM
         document.body.appendChild(modal);
         
-        // Force reflow to ensure CSS transition works
         modal.offsetHeight;
         
-        // Add visible class for CSS transitions
         modal.classList.add('modal-visible');
         
-        // Prevent body scroll
         document.body.style.overflow = 'hidden';
         
-        // Set focus if requested
         if (focus) {
             modal.setAttribute('tabindex', '-1');
             modal.focus();
         }
 
-        // Trap focus within modal
         this.trapFocus(modal);
     }
 
@@ -374,29 +349,23 @@ class ModalManager {
 
         const config = modal._modalConfig || {};
 
-        // Call onHide callback
         if (config.onHide) {
             config.onHide(modal);
         }
 
-        // Remove visible class for CSS transition
         modal.classList.remove('modal-visible');
 
-        // Remove from tracking
         this.activeModals.delete(modal);
 
-        // Restore body scroll if no other modals
         if (this.activeModals.size === 0) {
             document.body.style.overflow = '';
         }
 
-        // Remove from DOM after transition
         setTimeout(() => {
             if (modal.parentNode) {
                 modal.parentNode.removeChild(modal);
             }
 
-            // Call onDestroy callback
             if (config.onDestroy) {
                 config.onDestroy(modal);
             }
@@ -427,7 +396,6 @@ class ModalManager {
                 field.classList.add('error');
                 field.parentNode.appendChild(errorContainer);
             } else if (fieldName === 'general') {
-                // Show general errors at the top of the form
                 const generalError = this.createErrorContainer(fieldErrors, 'general-error');
                 form.insertBefore(generalError, form.firstChild);
             }
@@ -439,12 +407,10 @@ class ModalManager {
      * @param {HTMLElement} form - Form element
      */
     clearFormErrors(form) {
-        // Remove error classes
         form.querySelectorAll('.error').forEach(el => {
             el.classList.remove('error');
         });
 
-        // Remove error containers
         form.querySelectorAll('.error-container, .general-error').forEach(el => {
             el.remove();
         });
@@ -535,12 +501,10 @@ class ModalManager {
      * Set up global event listeners
      */
     setupGlobalEventListeners() {
-        // Handle browser back button
         window.addEventListener('popstate', () => {
             this.closeAllModals();
         });
 
-        // Handle window resize
         window.addEventListener('resize', () => {
             this.activeModals.forEach(modal => {
                 this.repositionModal(modal);
@@ -573,11 +537,9 @@ class ModalManager {
         const content = modal.querySelector('.modal-content');
         if (!content) return;
 
-        // Reset any previous positioning
         content.style.marginTop = '';
         content.style.marginBottom = '';
 
-        // Center vertically if modal is smaller than viewport
         const modalHeight = content.offsetHeight;
         const viewportHeight = window.innerHeight;
 
@@ -608,7 +570,6 @@ class ModalManager {
      */
     destroy() {
         this.closeAllModals();
-        // Remove event listeners would go here if we stored references
         this.activeModals.clear();
     }
 }

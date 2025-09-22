@@ -210,7 +210,6 @@ class ThreadController {
     renderPagination(pagination, threadId) {
         const containerId = `pagination-thread-${threadId}`;
 
-        // Set up event delegation after render
         setTimeout(() => {
             PaginationHelper.setupEventDelegation(containerId, (page) => {
                 this.showThread(threadId, page);
@@ -254,7 +253,6 @@ class ThreadController {
             await this.createPost(threadId, formData.get('content'));
             form.reset();
         } catch (error) {
-            // Error already handled in createPost
         }
     }
 
@@ -528,6 +526,5 @@ class ThreadController {
     }
 
     destroy() {
-        // Cleanup if needed
     }
 }

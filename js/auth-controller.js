@@ -12,7 +12,6 @@ class AuthController {
         const content = document.getElementById('content');
         content.innerHTML = this.renderLoginPage();
         this.setupLoginForm();
-        // Ensure scroll happens after DOM updates
         setTimeout(() => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 0);
@@ -22,7 +21,6 @@ class AuthController {
         const content = document.getElementById('content');
         content.innerHTML = this.renderRegisterPage();
         this.setupRegisterForm();
-        // Ensure scroll happens after DOM updates
         setTimeout(() => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }, 0);
@@ -496,6 +494,5 @@ class AuthController {
     }
 
     destroy() {
-        // Cleanup if needed
     }
 }

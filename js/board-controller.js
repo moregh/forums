@@ -275,7 +275,6 @@ class BoardController {
         const pagination = PaginationHelper.calculatePagination(currentPage, totalPages * 20, 20);
         const containerId = `pagination-board-${boardId}`;
 
-        // Set up event delegation after render
         setTimeout(() => {
             PaginationHelper.setupEventDelegation(containerId, (page) => {
                 this.showBoard(boardId, page);
@@ -472,7 +471,6 @@ class BoardController {
     }
 
     setupBoardInteractions() {
-        // Set up thread row click handlers
         const threadRows = document.querySelectorAll('.thread-row');
         threadRows.forEach(row => {
             if (!row.hasAttribute('data-click-handler')) {
@@ -483,6 +481,5 @@ class BoardController {
     }
 
     destroy() {
-        // Cleanup if needed
     }
 }

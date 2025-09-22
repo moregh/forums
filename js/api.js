@@ -5,7 +5,6 @@ class ForumAPI {
         this.user = JSON.parse(localStorage.getItem('user') || 'null');
     }
 
-    // Set authentication token
     setAuth(token, user) {
         this.token = token;
         this.user = user;
@@ -13,7 +12,6 @@ class ForumAPI {
         localStorage.setItem('user', JSON.stringify(user));
     }
 
-    // Clear authentication
     clearAuth() {
         this.token = null;
         this.user = null;
@@ -21,7 +19,6 @@ class ForumAPI {
         localStorage.removeItem('user');
     }
 
-    // Make authenticated request
     async request(endpoint, options = {}) {
         const url = `${this.baseURL}${endpoint}`;
         const config = {
@@ -32,7 +29,6 @@ class ForumAPI {
             ...options
         };
 
-        // Add authorization header if token exists
         if (this.token) {
             config.headers.Authorization = `Bearer ${this.token}`;
         }
@@ -40,7 +36,6 @@ class ForumAPI {
         try {
             const response = await fetch(url, config);
             
-            // Handle authentication errors
             if (response.status === 401) {
                 this.clearAuth();
                 if (window.forum) {
@@ -49,7 +44,6 @@ class ForumAPI {
                 return null;
             }
 
-            // Handle 404 errors gracefully
             if (response.status === 404) {
                 const errorData = await response.json().catch(() => ({ message: 'Not found' }));
                 throw new Error(errorData.message || 'Resource not found');
@@ -69,7 +63,6 @@ class ForumAPI {
         }
     }
 
-    // Authentication methods
     async register(username, email, password) {
         const response = await this.request('/api/auth/register', {
             method: 'POST',
@@ -109,7 +102,6 @@ class ForumAPI {
         return response;
     }
 
-    // Board methods
     async getBoards() {
         return this.request('/api/boards');
     }
@@ -130,7 +122,6 @@ class ForumAPI {
             return await this.request(`/api/threads/${threadId}`);
         } catch (error) {
             console.warn(`Failed to get thread info for ${threadId}:`, error);
-            // Return a fallback object with minimal info
             return {
                 thread_id: threadId,
                 title: `Thread ${threadId}`,
@@ -210,9 +201,7 @@ class ForumAPI {
         });
     }
 
-    // REMOVED: Duplicate methods that don't exist
 
-    // Admin methods
     async banUser(userId, reason = null) {
         return this.request(`/api/admin/users/${userId}/ban`, {
             method: 'POST',
@@ -240,7 +229,6 @@ class ForumAPI {
         });
     }
 
-    // User info method
     async getPublicUserInfo(userId) {
         return this.request(`/api/users/${userId}/public`);
     }

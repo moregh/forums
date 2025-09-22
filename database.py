@@ -1,3 +1,4 @@
+# type: ignore
 import sqlite3
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
@@ -48,7 +49,7 @@ class DatabaseManager:
         
     def get_connection(self):
         conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row  # Enable dict-like access
+        conn.row_factory = sqlite3.Row
         return conn
     
     def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False):

@@ -32,7 +32,6 @@ class AdminController {
             
             this.setupAdminInteractions();
             this.state.setState({ loading: false });
-            // Ensure scroll happens after DOM updates
             setTimeout(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }, 0);

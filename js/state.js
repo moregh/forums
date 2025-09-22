@@ -13,7 +13,6 @@ class ForumState {
         };
     }
 
-    // Subscribe to state changes
     subscribe(event, callback) {
         if (!this.listeners[event]) {
             this.listeners[event] = [];
@@ -21,19 +20,16 @@ class ForumState {
         this.listeners[event].push(callback);
     }
 
-    // Emit state change
     emit(event, data) {
         if (this.listeners[event]) {
             this.listeners[event].forEach(callback => callback(data));
         }
     }
 
-    // Update state
     setState(updates) {
         const oldState = { ...this.state };
         this.state = { ...this.state, ...updates };
         
-        // Emit specific change events
         Object.keys(updates).forEach(key => {
             if (oldState[key] !== this.state[key]) {
                 this.emit(`${key}Changed`, this.state[key]);
