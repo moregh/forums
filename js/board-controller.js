@@ -20,7 +20,11 @@ class BoardController {
             content.innerHTML = this.renderHomePage(boards, user);
             
             this.state.setState({ boards, loading: false });
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Ensure scroll happens after DOM updates
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 0);
             
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });
@@ -51,9 +55,12 @@ class BoardController {
                 totalPages,
                 loading: false
             });
-            
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            
+
+            // Ensure scroll happens after DOM updates
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 0);
+
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });
             this.showErrorState(error.message);
@@ -116,7 +123,7 @@ class BoardController {
                 ${this.renderThreads(formattedThreads, user)}
             </div>
             
-            ${totalPages > 1 ? this.renderPagination(page, totalPages, boardId => `boardController.showBoard(${board.board_id}, ${boardId})`) : ''}
+            ${totalPages > 1 ? this.renderPagination(page, totalPages, board.board_id) : ''}
             
             ${threads.length === 0 ? this.renderEmptyThreadsState(board, user) : ''}
         `;
@@ -258,11 +265,18 @@ class BoardController {
         `;
     }
 
-    renderPagination(currentPage, totalPages, onPageChange) {
-        return PaginationHelper.renderPagination(
-            PaginationHelper.calculatePagination(currentPage, totalPages * 20, 20),
-            onPageChange
-        );
+    renderPagination(currentPage, totalPages, boardId) {
+        const pagination = PaginationHelper.calculatePagination(currentPage, totalPages * 20, 20);
+        const containerId = `pagination-board-${boardId}`;
+
+        // Set up event delegation after render
+        setTimeout(() => {
+            PaginationHelper.setupEventDelegation(containerId, (page) => {
+                this.showBoard(boardId, page);
+            });
+        }, 0);
+
+        return PaginationHelper.renderPagination(pagination, containerId);
     }
 
     renderEmptyBoardsState() {

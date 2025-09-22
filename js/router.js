@@ -25,7 +25,7 @@ class Router {
         // Only handle route if the path actually changed
         if (path !== this.currentRoute) {
             this.handleRoute();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // Scroll reset handled by individual controllers
         }
     }
 

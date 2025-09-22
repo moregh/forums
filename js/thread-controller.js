@@ -45,7 +45,11 @@ class ThreadController {
             });
 
             this.setupThreadInteractions();
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+
+            // Ensure scroll happens after DOM updates
+            setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }, 0);
 
         } catch (error) {
             this.state.setState({ error: error.message, loading: false });
@@ -202,10 +206,16 @@ class ThreadController {
     }
 
     renderPagination(pagination, threadId) {
-        return PaginationHelper.renderPagination(
-            pagination,
-            (page) => `threadController.showThread(${threadId}, ${page})`
-        );
+        const containerId = `pagination-thread-${threadId}`;
+
+        // Set up event delegation after render
+        setTimeout(() => {
+            PaginationHelper.setupEventDelegation(containerId, (page) => {
+                this.showThread(threadId, page);
+            });
+        }, 0);
+
+        return PaginationHelper.renderPagination(pagination, containerId);
     }
 
     renderEmptyPostsState() {

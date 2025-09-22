@@ -76,9 +76,10 @@ const Templates = {
         <div class="threads-list">
             ${UIComponents.renderThreads(threads, currentUser)}
         </div>
-        ${UIComponents.renderPagination(page, totalPages, (newPage) =>
-            `forum.showBoard(${board.board_id}, ${newPage})`
-        )}
+        ${totalPages > 1 ? (() => {
+            const pagination = PaginationHelper.calculatePagination(page, totalPages * 20, 20);
+            return PaginationHelper.renderPagination(pagination, `pagination-static-board-${board.board_id}`);
+        })() : ''}
     `,
 
     thread: (threadInfo, posts, currentUser, page, totalPages) => {
@@ -150,9 +151,10 @@ const Templates = {
                 <div class="posts-list">
                     ${UIComponents.renderPosts(posts, currentUser)}
                 </div>
-                ${totalPages > 1 ? UIComponents.renderPagination(page, totalPages, (newPage) =>
-                    `forum.showThread(${safeThreadInfo.thread_id}, ${newPage})`
-                ) : ''}
+                ${totalPages > 1 ? (() => {
+                    const pagination = PaginationHelper.calculatePagination(page, totalPages * 20, 20);
+                    return PaginationHelper.renderPagination(pagination, `pagination-static-thread-${safeThreadInfo.thread_id}`);
+                })() : ''}
             `;
 
             return threadHTML;

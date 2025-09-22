@@ -119,23 +119,9 @@ class UIComponents {
         return currentUser && currentUser.is_admin;
     }
 
-    static renderPagination(currentPage, totalPages, onPageChange) {
-        if (totalPages <= 1) return '';
-
-        let pagination = '<div class="pagination">';
-
-        if (currentPage > 1) {
-            pagination += `<button onclick="${onPageChange(currentPage - 1)}" class="pagination-btn">« Previous</button>`;
-        }
-
-        pagination += `<span class="pagination-info">Page ${currentPage}</span>`;
-
-        if (currentPage < totalPages) {
-            pagination += `<button onclick="${onPageChange(currentPage + 1)}" class="pagination-btn">Next »</button>`;
-        }
-
-        pagination += '</div>';
-        return pagination;
+    static renderPagination(currentPage, totalPages, containerId = 'pagination-ui') {
+        const pagination = PaginationHelper.calculatePagination(currentPage, totalPages * 20, 20);
+        return PaginationHelper.renderPagination(pagination, containerId);
     }
 
     static renderThreads(threads, currentUser) {

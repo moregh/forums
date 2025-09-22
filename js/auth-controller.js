@@ -12,14 +12,20 @@ class AuthController {
         const content = document.getElementById('content');
         content.innerHTML = this.renderLoginPage();
         this.setupLoginForm();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Ensure scroll happens after DOM updates
+        setTimeout(() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 0);
     }
 
     showRegister() {
         const content = document.getElementById('content');
         content.innerHTML = this.renderRegisterPage();
         this.setupRegisterForm();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Ensure scroll happens after DOM updates
+        setTimeout(() => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }, 0);
     }
 
     renderLoginPage() {
