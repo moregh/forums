@@ -582,6 +582,15 @@ async def edit_post(post_id: int, post_data: PostCreate, request: Request, curre
 @app.delete("/api/posts/{post_id}")
 @audit_action("post_deleted", "post")
 async def delete_post(post_id: int, request: Request, current_user: dict = Depends(verify_csrf_token)):
+    # First check if post exists at all
+    post_check = await db.check_post_exists(post_id)
+    if not post_check:
+        raise Exceptions.NOT_FOUND
+
+    # If post is already deleted, return a specific error
+    if post_check["deleted"]:
+        raise HTTPException(status.HTTP_410_GONE, "Post has already been deleted")
+
     post = await db.get_post_with_context(post_id)
     if not post:
         raise Exceptions.NOT_FOUND

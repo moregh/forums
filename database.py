@@ -170,6 +170,11 @@ class DatabaseManager:
             conn.row_factory = aiosqlite.Row
             cursor = await conn.cursor()
             await cursor.execute(query, params)
+
+            # Commit if this is a write operation (INSERT, UPDATE, DELETE)
+            if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                await conn.commit()
+
             if fetch_one:
                 result = await cursor.fetchone()
             else:
@@ -615,7 +620,19 @@ class DatabaseManager:
         """, (post_id,), fetch_one=True)
         
         return dict(post) if post else None
-    
+
+    async def check_post_exists(self, post_id: int) -> Optional[Dict]:
+        """Check if post exists (including deleted posts) for better error messages"""
+        post = await self.execute_query("""
+            SELECT p.post_id, p.deleted, p.user_id, t.locked, t.deleted as thread_deleted, b.deleted as board_deleted
+            FROM posts p
+            JOIN threads t ON p.thread_id = t.thread_id
+            JOIN boards b ON t.board_id = b.board_id
+            WHERE p.post_id = ?
+        """, (post_id,), fetch_one=True)
+
+        return dict(post) if post else None
+
     async def create_post(self, thread_id: int, user_id: int, content: str) -> int:
         """Create a new post"""
         current_time = timestamp()

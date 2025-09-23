@@ -28,7 +28,14 @@ class ForumAPI {
     }
 
     async request(endpoint, options = {}) {
-        const url = `${this.baseURL}${endpoint}`;
+        let url = `${this.baseURL}${endpoint}`;
+
+        // Add cache busting for GET requests to prevent stale data
+        if (!options.method || options.method.toUpperCase() === 'GET') {
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}_t=${Date.now()}`;
+        }
+
         const config = {
             headers: {
                 'Content-Type': 'application/json',
@@ -62,6 +69,11 @@ class ForumAPI {
             if (response.status === ForumConfig.httpStatus.notFound) {
                 const errorData = await response.json().catch(() => ({ message: 'Not found' }));
                 throw new Error(errorData.message || 'Resource not found');
+            }
+
+            if (response.status === 410) { // HTTP 410 Gone
+                const errorData = await response.json().catch(() => ({ message: 'Resource already deleted' }));
+                throw new Error(errorData.message || 'Resource has already been deleted');
             }
 
             const data = await response.json();

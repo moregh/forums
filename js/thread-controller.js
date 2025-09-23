@@ -323,8 +323,18 @@ class ThreadController {
             async () => {
                 try {
                     await this.postService.deletePost(postId);
+
+                    // Immediately remove the post from the UI
+                    const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+                    if (postElement) {
+                        postElement.style.opacity = '0.5';
+                        postElement.style.pointerEvents = 'none';
+                    }
+
                     this.notifications.showSuccess('Post deleted successfully!');
-                    setTimeout(() => this.refreshCurrentThread(), 1000);
+
+                    // Refresh immediately to ensure consistency
+                    await this.refreshCurrentThread();
                 } catch (error) {
                     this.notifications.showError(error.message);
                 }

@@ -97,6 +97,9 @@ class PostService {
             if (error.message.includes('not found')) {
                 throw new Error('Post not found or already deleted');
             }
+            if (error.message.includes('already been deleted')) {
+                throw new Error('Post has already been deleted');
+            }
             throw error;
         }
     }
