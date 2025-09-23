@@ -208,7 +208,7 @@ class NavigationManager {
                 <div class="quick-nav-items" id="quick-nav-items">
                     ${items.map((item, index) => `
                         <div class="quick-nav-item" data-index="${index}">
-                            ${item.text}
+                            ${UIComponents.escapeHtml(item.text)}
                         </div>
                     `).join('')}
                 </div>

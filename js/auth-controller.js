@@ -302,7 +302,7 @@ class AuthController {
     renderPasswordRequirements(requirements) {
         return requirements.map(req => 
             `<div class="requirement ${req.met ? 'met' : 'unmet'}">
-                ${req.met ? '✓' : '✗'} ${req.text}
+                ${req.met ? '✓' : '✗'} ${UIComponents.escapeHtml(req.text)}
             </div>`
         ).join('');
     }

@@ -224,7 +224,7 @@ class BoardController {
                 ${breadcrumbs.map(crumb => 
                     crumb.current 
                         ? `<span class="breadcrumb-current">${UIComponents.escapeHtml(crumb.text)}</span>`
-                        : `<a href="${crumb.url}" onclick="boardController.router.navigate('${crumb.url}'); return false;">${crumb.text}</a>`
+                        : `<a href="${crumb.url}" onclick="boardController.router.navigate('${crumb.url}'); return false;">${UIComponents.escapeHtml(crumb.text)}</a>`
                 ).join('<span class="breadcrumb-separator">›</span>')}
             </div>
         `;

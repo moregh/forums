@@ -118,7 +118,7 @@ class ThreadController {
                 <div class="post-content" id="post-content-${post.post_id}">
                     ${post.formattedContent}
                 </div>
-                ${post.editInfo ? `<div class="post-edit-info">${post.editInfo.text}</div>` : ''}
+                ${post.editInfo ? `<div class="post-edit-info">${UIComponents.escapeHtml(post.editInfo.text)}</div>` : ''}
             </div>
         `).join('');
     }
@@ -200,7 +200,7 @@ class ThreadController {
                 ${breadcrumbs.map(crumb => 
                     crumb.current 
                         ? `<span class="breadcrumb-current">${UIComponents.escapeHtml(crumb.text)}</span>`
-                        : `<a href="${crumb.url}" onclick="threadController.router.navigate('${crumb.url}'); return false;">${crumb.text}</a>`
+                        : `<a href="${crumb.url}" onclick="threadController.router.navigate('${crumb.url}'); return false;">${UIComponents.escapeHtml(crumb.text)}</a>`
                 ).join('<span class="breadcrumb-separator">›</span>')}
             </div>
         `;

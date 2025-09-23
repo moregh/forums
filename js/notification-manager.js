@@ -133,7 +133,7 @@ class NotificationManager {
         if (actions.length > 0) {
             content += '<div class="notification-actions">';
             actions.forEach(action => {
-                content += `<button class="notification-btn" onclick="${action.callback}">${action.text}</button>`;
+                content += `<button class="notification-btn" onclick="${action.callback}">${UIComponents.escapeHtml(action.text)}</button>`;
             });
             content += '</div>';
         }

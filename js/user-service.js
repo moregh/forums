@@ -72,7 +72,7 @@ class UserService {
                     </div>
                     <div class="user-basic-info">
                         <h4 class="username">
-                            ${userInfo.username}
+                            ${UIComponents.escapeHtml(userInfo.username)}
                             ${userInfo.is_admin ? '<span class="admin-badge">Admin</span>' : ''}
                             ${userInfo.is_banned ? '<span class="banned-badge">Banned</span>' : ''}
                         </h4>
