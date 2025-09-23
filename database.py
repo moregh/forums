@@ -4,43 +4,87 @@ import asyncio
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
 from functools import lru_cache, wraps
+import hashlib
+import json
 
 
 def timestamp() -> float:
     return datetime.now(timezone.utc).timestamp()
 
 
-def ttl_cache(maxsize: int, ttl: int):
+class AsyncTTLCache:
+    """Async-compatible TTL cache for database operations"""
+
+    def __init__(self):
+        self.cache = {}
+        self.timestamps = {}
+
+    def _make_key(self, func_name: str, args: tuple, kwargs: dict) -> str:
+        """Create a cache key from function name and arguments"""
+        key_data = {
+            'func': func_name,
+            'args': args,
+            'kwargs': sorted(kwargs.items()) if kwargs else []
+        }
+        key_str = json.dumps(key_data, sort_keys=True, default=str)
+        return hashlib.md5(key_str.encode()).hexdigest()
+
+    def get(self, key: str, ttl: int) -> Optional[Any]:
+        """Get cached value if not expired"""
+        if key not in self.cache:
+            return None
+
+        if timestamp() - self.timestamps[key] > ttl:
+            del self.cache[key]
+            del self.timestamps[key]
+            return None
+
+        return self.cache[key]
+
+    def set(self, key: str, value: Any):
+        """Set cached value with current timestamp"""
+        self.cache[key] = value
+        self.timestamps[key] = timestamp()
+
+    def clear_expired(self, ttl: int):
+        """Remove expired entries"""
+        current_time = timestamp()
+        expired_keys = [
+            key for key, ts in self.timestamps.items()
+            if current_time - ts > ttl
+        ]
+        for key in expired_keys:
+            if key in self.cache:
+                del self.cache[key]
+            if key in self.timestamps:
+                del self.timestamps[key]
+
+# Global cache instance
+db_cache = AsyncTTLCache()
+
+def async_ttl_cache(ttl: int = 300):
     """
-    Decorator to add TTL to lru_cache. Entries expire after ttl seconds.
-    maxsize: Maximum number of cache entries (from lru_cache).
-    ttl: Time-to-live in seconds.
+    Async-compatible TTL cache decorator
+    ttl: Time-to-live in seconds (default 5 minutes)
     """
     def decorator(func):
-
-        @lru_cache(maxsize=maxsize)
-        def cached_func(*args, **kwargs):
-            return func(*args, **kwargs)
-
-        cache_times = {}
-
         @wraps(func)
-        def wrapper(*args, **kwargs):
-            cache_key = cached_func.__wrapped__.__code__.co_varnames[1:][:len(args)] + tuple(args) + tuple(sorted(kwargs.items()))
-            current_time = timestamp()
+        async def wrapper(*args, **kwargs):
+            # Skip caching for self parameter and generate key
+            cache_args = args[1:] if args and hasattr(args[0], '__class__') else args
+            cache_key = db_cache._make_key(func.__name__, cache_args, kwargs)
 
-            if cache_key in cache_times:
-                if current_time - cache_times[cache_key] < ttl:
-                    return cached_func(*args, **kwargs)
-                else:
-                    cached_func.cache_clear()  # Clear the specific entry
-                    del cache_times[cache_key]
+            # Try to get from cache
+            cached_result = db_cache.get(cache_key, ttl)
+            if cached_result is not None:
+                return cached_result
 
-            result = cached_func(*args, **kwargs)
-            cache_times[cache_key] = current_time
+            # Execute function and cache result
+            result = await func(*args, **kwargs)
+            db_cache.set(cache_key, result)
             return result
 
-        wrapper.cache_clear = cached_func.cache_clear  # type: ignore
+        wrapper.cache_clear = lambda: db_cache.cache.clear()
         return wrapper
     return decorator
 
@@ -48,6 +92,73 @@ def ttl_cache(maxsize: int, ttl: int):
 class DatabaseManager:
     def __init__(self, db_path: str):
         self.db_path = db_path
+        self._cache_cleanup_task = None
+
+    async def start_cache_cleanup(self):
+        """Start background cache cleanup task"""
+        if self._cache_cleanup_task is None:
+            self._cache_cleanup_task = asyncio.create_task(self._periodic_cache_cleanup())
+
+    async def _periodic_cache_cleanup(self):
+        """Periodically clean up expired cache entries"""
+        while True:
+            await asyncio.sleep(600)  # Every 10 minutes
+            db_cache.clear_expired(ttl=1800)  # Remove entries older than 30 minutes
+
+    async def stop_cache_cleanup(self):
+        """Stop background cache cleanup task"""
+        if self._cache_cleanup_task:
+            self._cache_cleanup_task.cancel()
+            self._cache_cleanup_task = None
+
+    def invalidate_user_cache(self, user_id: int = None, username: str = None):
+        """Invalidate user-related cache entries"""
+        # Clear specific user caches
+        if user_id:
+            cache_keys = [key for key in db_cache.cache.keys() if f'get_user_by_id' in key and str(user_id) in key]
+            for key in cache_keys:
+                if key in db_cache.cache:
+                    del db_cache.cache[key]
+                if key in db_cache.timestamps:
+                    del db_cache.timestamps[key]
+
+        if username:
+            cache_keys = [key for key in db_cache.cache.keys() if f'get_user_by_username' in key and username in key]
+            for key in cache_keys:
+                if key in db_cache.cache:
+                    del db_cache.cache[key]
+                if key in db_cache.timestamps:
+                    del db_cache.timestamps[key]
+
+    def invalidate_board_cache(self, board_id: int = None):
+        """Invalidate board-related cache entries"""
+        patterns = ['get_all_boards', 'get_board_by_id']
+        if board_id:
+            patterns.append(str(board_id))
+
+        for pattern in patterns:
+            cache_keys = [key for key in db_cache.cache.keys() if pattern in key]
+            for key in cache_keys:
+                if key in db_cache.cache:
+                    del db_cache.cache[key]
+                if key in db_cache.timestamps:
+                    del db_cache.timestamps[key]
+
+    def invalidate_thread_cache(self, thread_id: int = None, board_id: int = None):
+        """Invalidate thread-related cache entries"""
+        patterns = ['get_thread']
+        if thread_id:
+            patterns.append(str(thread_id))
+        if board_id:
+            patterns.append(str(board_id))
+
+        for pattern in patterns:
+            cache_keys = [key for key in db_cache.cache.keys() if pattern in key]
+            for key in cache_keys:
+                if key in db_cache.cache:
+                    del db_cache.cache[key]
+                if key in db_cache.timestamps:
+                    del db_cache.timestamps[key]
 
     async def get_connection(self):
         conn = await aiosqlite.connect(self.db_path)
@@ -76,6 +187,7 @@ class DatabaseManager:
             return lastrowid  # type: ignore
 
     
+    @async_ttl_cache(ttl=300)  # Cache for 5 minutes
     async def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username"""
         user = await self.execute_query(
@@ -85,6 +197,7 @@ class DatabaseManager:
         )
         return dict(user) if user else None
     
+    @async_ttl_cache(ttl=300)  # Cache for 5 minutes
     async def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """Get user by ID"""
         user = await self.execute_query(
@@ -116,14 +229,17 @@ class DatabaseManager:
         """Update user login information"""
         current_time = timestamp()
         await self.execute_query("""
-            UPDATE users 
-            SET failed_login_attempts = 0, 
+            UPDATE users
+            SET failed_login_attempts = 0,
                 locked_until = NULL,
                 last_activity = ?,
                 last_login_at = ?,
                 last_login_ip = ?
             WHERE user_id = ?
         """, (current_time, current_time, client_ip, user_id))
+
+        # Invalidate user cache after update
+        self.invalidate_user_cache(user_id=user_id)
     
     async def increment_failed_login(self, user_id: int, client_ip: str):
         """Increment failed login attempts"""
@@ -314,6 +430,7 @@ class DatabaseManager:
             )
 
     
+    @async_ttl_cache(ttl=600)  # Cache for 10 minutes (boards change rarely)
     async def get_all_boards(self) -> List[Dict]:
         """Get all visible boards"""
         boards = await self.execute_query("SELECT * FROM board_summary ORDER BY name")
@@ -325,19 +442,24 @@ class DatabaseManager:
             "INSERT INTO boards (name, description, creator_id) VALUES (?, ?, ?)",
             (name, description, creator_id)
         )
-        
+
         await self.execute_insert(
             "INSERT INTO board_moderators (board_id, user_id, assigned_by) VALUES (?, ?, ?)",
             (board_id, creator_id, creator_id)
         )
-        
+
         await self.execute_insert(
             "INSERT INTO board_stats (board_id, thread_count, post_count) VALUES (?, 0, 0)",
             (board_id,)
         )
+
+        # Invalidate board cache after creation
+        self.invalidate_board_cache()
+
         return board_id
     
     
+    @async_ttl_cache(ttl=600)  # Cache for 10 minutes
     async def get_board_by_id(self, board_id: int) -> Optional[Dict]:
         """Get board by ID"""
         board = await self.execute_query(
@@ -380,6 +502,7 @@ class DatabaseManager:
         return mapped_threads
     
     
+    @async_ttl_cache(ttl=180)  # Cache for 3 minutes (threads change more frequently)
     async def get_thread_by_id(self, thread_id: int) -> Optional[Dict]:
         """Get thread by ID"""
         thread = await self.execute_query("""
@@ -742,6 +865,14 @@ class DatabaseManager:
         """, (session_id, timestamp()), fetch_one=True)
 
         return result["csrf_token"] if result else None
+
+    async def update_session_csrf_token(self, session_id: str, csrf_token: str):
+        """Update CSRF token for a session"""
+        await self.execute_query("""
+            UPDATE user_sessions
+            SET csrf_token = ?
+            WHERE session_id = ? AND expires_at > ? AND is_active = TRUE AND revoked = FALSE
+        """, (csrf_token, session_id, timestamp()))
 
     async def update_session_activity(self, session_id: str):
         """Update session last activity timestamp"""

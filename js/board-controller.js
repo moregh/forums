@@ -309,6 +309,8 @@ class BoardController {
             async (formData) => {
                 const board = await this.boardService.createBoard(formData.name, formData.description);
                 await this.refreshBoards();
+                // Small delay to ensure database changes are reflected
+                await new Promise(resolve => setTimeout(resolve, 100));
                 this.router.navigate(`/boards/${board.board_id}`);
             },
             {

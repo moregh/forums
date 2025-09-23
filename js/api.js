@@ -9,12 +9,13 @@ class ForumAPI {
     setAuth(token, user, csrfToken = null) {
         this.token = token;
         this.user = user;
-        this.csrfToken = csrfToken;
-        localStorage.setItem('auth_token', token);
-        localStorage.setItem('user', JSON.stringify(user));
+        // Only update CSRF token if one is provided
         if (csrfToken) {
+            this.csrfToken = csrfToken;
             localStorage.setItem('csrf_token', csrfToken);
         }
+        localStorage.setItem('auth_token', token);
+        localStorage.setItem('user', JSON.stringify(user));
     }
 
     clearAuth() {
@@ -43,6 +44,8 @@ class ForumAPI {
 
         if (this.csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method?.toUpperCase())) {
             config.headers['X-CSRF-Token'] = this.csrfToken;
+        } else if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method?.toUpperCase())) {
+            console.warn('CSRF token not available for', options.method, 'request to', url);
         }
 
         try {

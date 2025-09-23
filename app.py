@@ -300,12 +300,25 @@ async def login(login_data: UserLogin, request: Request, response: Response):
     )
 
 @app.post("/api/auth/refresh", response_model=TokenResponse)
-async def refresh_token(current_user: dict = Depends(get_current_user)):
+async def refresh_token(request: Request, current_user: dict = Depends(get_current_user)):
     access_token = security_manager.create_access_token({"sub": str(current_user["user_id"])})
+
+    # Get existing CSRF token from session or generate new one
+    session_id = request.cookies.get("session_id")
+    csrf_token = None
+    if session_id:
+        csrf_token = await db.get_session_csrf_token(session_id)
+
+    if not csrf_token:
+        csrf_token = security_manager.generate_csrf_token()
+        if session_id:
+            await db.update_session_csrf_token(session_id, csrf_token)
+
     return TokenResponse(
         access_token=access_token,
         expires_in=security_manager.access_token_expire_minutes * 60,
-        user=UserResponse(**current_user)
+        user=UserResponse(**current_user),
+        csrf_token=csrf_token
     )
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
@@ -674,8 +687,9 @@ async def health_check():
 
 @app.on_event("startup")
 async def startup_event():
-    # Start background cache cleanup task
+    # Start background cache cleanup tasks
     asyncio.create_task(periodic_cache_cleanup())
+    await db.start_cache_cleanup()
 
 if __name__ == "__main__":
     import uvicorn
