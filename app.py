@@ -5,16 +5,20 @@ from fastapi import FastAPI, HTTPException, Depends, status, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
 from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo, PublicUserInfo
 from security import SecurityManager
-from functools import wraps
+from functools import wraps, lru_cache
 from utils import timestamp
 from config import *
+import asyncio
+import time
 
 
 
@@ -112,6 +116,24 @@ security = HTTPBearer()
 security_manager = SecurityManager(secret_key=SECRET_KEY)
 db = DatabaseManager(DB_PATH)
 
+# Performance optimization: cache for expensive operations
+stats_cache = {"data": None, "expires": 0}
+user_info_cache = {}
+
+def cleanup_expired_cache():
+    """Clean up expired cache entries"""
+    current_time = time.time()
+    expired_keys = [key for key, (_, expires) in user_info_cache.items() if current_time >= expires]
+    for key in expired_keys:
+        del user_info_cache[key]
+
+# Cache cleanup task
+async def periodic_cache_cleanup():
+    while True:
+        await asyncio.sleep(300)  # Every 5 minutes
+        cleanup_expired_cache()
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -312,15 +334,38 @@ async def update_user_profile(user_id: int, update_data: dict, current_user: dic
 async def get_user_info(user_id: int, current_user: dict = Depends(get_current_user)):
     validate_user_permissions(user_id, current_user, allow_self=True)
     await validate_user_exists(user_id)
+
+    # Cache user info for 2 minutes
+    cache_key = f"user_info_{user_id}"
+    current_time = time.time()
+
+    if cache_key in user_info_cache:
+        cached_data, expires = user_info_cache[cache_key]
+        if current_time < expires:
+            return UserInfo(**cached_data)
+
     user_info = await db.get_user_info(user_id)
+    user_info_cache[cache_key] = (user_info, current_time + 120)  # 2 minutes
     return UserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/public", response_model=PublicUserInfo)
 async def get_public_user_info(user_id: int):
     await validate_user_exists(user_id)
+
+    # Cache public user info for 5 minutes (longer since it's public)
+    cache_key = f"public_user_info_{user_id}"
+    current_time = time.time()
+
+    if cache_key in user_info_cache:
+        cached_data, expires = user_info_cache[cache_key]
+        if current_time < expires:
+            return PublicUserInfo(**cached_data)
+
     user_info = await db.get_user_info(user_id)
     if not user_info:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+
+    user_info_cache[cache_key] = (user_info, current_time + 300)  # 5 minutes
     return PublicUserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/preferences")
@@ -387,8 +432,10 @@ async def remove_user_admin(user_id: int, request: Request, current_user: dict =
     return {"message": "Admin privileges removed successfully"}
 
 @app.get("/api/boards", response_model=List[BoardResponse])
-async def get_boards():
+async def get_boards(response: Response):
     boards = await db.get_all_boards()
+    # Cache boards list for 5 minutes since it doesn't change often
+    response.headers["Cache-Control"] = "public, max-age=300"
     return [BoardResponse(**board) for board in boards]
 
 @app.post("/api/boards", response_model=BoardResponse)
@@ -566,7 +613,15 @@ async def search_forum(q: str, type: str = "all", page: int = 1, per_page: int =
 
 @app.get("/api/stats")
 async def get_forum_statistics():
-    return await db.get_forum_statistics()
+    # Cache forum statistics for 5 minutes
+    current_time = time.time()
+    if stats_cache["data"] and current_time < stats_cache["expires"]:
+        return stats_cache["data"]
+
+    stats = await db.get_forum_statistics()
+    stats_cache["data"] = stats
+    stats_cache["expires"] = current_time + 300  # 5 minutes
+    return stats
 
 @app.get("/api/admin/moderation-log")
 async def get_moderation_log(page: int = 1, per_page: int = 50, current_user: dict = Depends(require_admin)):
@@ -586,9 +641,41 @@ async def general_exception_handler(request: Request, exc: Exception):
         content=ErrorResponse(error="InternalServerError", message="An unexpected error occurred").dict()
     )
 
+# Static file serving with caching headers
+@app.get("/js/{file_path:path}")
+async def serve_js(file_path: str):
+    return FileResponse(
+        f"js/{file_path}",
+        media_type="application/javascript",
+        headers={
+            "Cache-Control": "public, max-age=86400",  # 24 hours
+            "ETag": f'"{hash(file_path)}"'
+        }
+    )
+
+@app.get("/css/{file_path:path}")
+async def serve_css(file_path: str):
+    return FileResponse(
+        f"css/{file_path}",
+        media_type="text/css",
+        headers={
+            "Cache-Control": "public, max-age=86400",  # 24 hours
+            "ETag": f'"{hash(file_path)}"'
+        }
+    )
+
+@app.get("/")
+async def serve_index():
+    return FileResponse("index.html")
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "timestamp": timestamp()}
+
+@app.on_event("startup")
+async def startup_event():
+    # Start background cache cleanup task
+    asyncio.create_task(periodic_cache_cleanup())
 
 if __name__ == "__main__":
     import uvicorn
