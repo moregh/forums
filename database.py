@@ -701,9 +701,49 @@ class DatabaseManager:
             return False
         
         self.execute_query("""
-            INSERT OR REPLACE INTO rate_limits 
+            INSERT OR REPLACE INTO rate_limits
             (identifier, action_type, attempt_count, window_start)
             VALUES (?, ?, ?, ?)
         """, (identifier, action, current_count + 1, timestamp()))
-        
+
         return True
+
+    def create_user_session(self, user_id: int, csrf_token: str, client_ip: str, user_agent: str) -> str:
+        """Create a new user session with CSRF token"""
+        import secrets
+        session_id = secrets.token_urlsafe(64)
+        current_time = timestamp()
+        expires_at = current_time + (24 * 3600)  # 24 hours
+
+        self.execute_insert("""
+            INSERT INTO user_sessions
+            (session_id, user_id, csrf_token, ip_address, user_agent, created_at, expires_at, last_activity)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """, (session_id, user_id, csrf_token, client_ip, user_agent, current_time, expires_at, current_time))
+
+        return session_id
+
+    def get_session_csrf_token(self, session_id: str) -> Optional[str]:
+        """Get CSRF token for a session"""
+        result = self.execute_query("""
+            SELECT csrf_token FROM user_sessions
+            WHERE session_id = ? AND expires_at > ? AND is_active = TRUE AND revoked = FALSE
+        """, (session_id, timestamp()), fetch_one=True)
+
+        return result["csrf_token"] if result else None
+
+    def update_session_activity(self, session_id: str):
+        """Update session last activity timestamp"""
+        self.execute_query("""
+            UPDATE user_sessions
+            SET last_activity = ?
+            WHERE session_id = ? AND expires_at > ? AND is_active = TRUE
+        """, (timestamp(), session_id, timestamp()))
+
+    def invalidate_user_sessions(self, user_id: int):
+        """Invalidate all sessions for a user"""
+        self.execute_query("""
+            UPDATE user_sessions
+            SET revoked = TRUE, is_active = FALSE
+            WHERE user_id = ?
+        """, (user_id,))

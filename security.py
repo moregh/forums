@@ -1,5 +1,6 @@
 import sqlite3
 import bcrypt
+import secrets
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 import jwt
@@ -44,6 +45,16 @@ class SecurityManager:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid token"
             )
+
+    def generate_csrf_token(self) -> str:
+        """Generate a cryptographically secure CSRF token"""
+        return secrets.token_urlsafe(32)
+
+    def verify_csrf_token(self, token: str, session_token: str) -> bool:
+        """Verify CSRF token matches session token using constant-time comparison"""
+        if not token or not session_token:
+            return False
+        return secrets.compare_digest(token, session_token)
 
 
 class RateLimiter:

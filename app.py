@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # type: ignore  -- have to add this because pylance is fucking abysmal
 from typing import List
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi import FastAPI, HTTPException, Depends, status, Request, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -83,18 +83,50 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         user_id = payload.get("sub")
         if not user_id:
             raise Exceptions.UNAUTHORIZED
-        
+
         user = db.get_user_by_id(int(user_id))
         if not user or user.get("is_banned"):
             raise Exceptions.UNAUTHORIZED
-        
+
         return user
     except:
         raise Exceptions.UNAUTHORIZED
 
+async def verify_csrf_token(request: Request, current_user: dict = Depends(get_current_user)) -> dict:
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not csrf_token:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "CSRF token required")
+
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Session required")
+
+    stored_csrf_token = db.get_session_csrf_token(session_id)
+    if not stored_csrf_token or not security_manager.verify_csrf_token(csrf_token, stored_csrf_token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid CSRF token")
+
+    db.update_session_activity(session_id)
+    return current_user
+
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     if not current_user.get("is_admin"):
         raise Exceptions.ADMIN_REQUIRED
+    return current_user
+
+async def verify_csrf_admin(request: Request, current_user: dict = Depends(require_admin)) -> dict:
+    csrf_token = request.headers.get("X-CSRF-Token")
+    if not csrf_token:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "CSRF token required")
+
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Session required")
+
+    stored_csrf_token = db.get_session_csrf_token(session_id)
+    if not stored_csrf_token or not security_manager.verify_csrf_token(csrf_token, stored_csrf_token):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid CSRF token")
+
+    db.update_session_activity(session_id)
     return current_user
 
 def check_rate_limit(identifier: str, action: str):
@@ -123,50 +155,78 @@ def validate_admin_action(target_user: dict, current_user: dict, action: str):
             raise HTTPException(status.HTTP_400_BAD_REQUEST, message)
 
 @app.post("/api/auth/register", response_model=TokenResponse)
-async def register(user_data: UserRegister, request: Request):
+async def register(user_data: UserRegister, request: Request, response: Response):
     client_ip = await get_client_ip(request)
     check_rate_limit(client_ip, "register")
-    
+
     if db.check_user_exists(user_data.username, user_data.email):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username or email already exists")
-    
+
     password_hash, password_salt = security_manager.hash_password(user_data.password)
     user_id = db.create_user(user_data.username, user_data.email, password_hash, password_salt)
     access_token = security_manager.create_access_token({"sub": str(user_id)})
     user = db.get_user_by_id(user_id)
-    
+
+    csrf_token = security_manager.generate_csrf_token()
+    user_agent = request.headers.get("user-agent", "")
+    session_id = db.create_user_session(user_id, csrf_token, client_ip, user_agent)
+
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        max_age=24 * 3600,  # 24 hours
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="strict"
+    )
+
     return TokenResponse(
         access_token=access_token,
         expires_in=security_manager.access_token_expire_minutes * 60,
-        user=UserResponse(**user)
+        user=UserResponse(**user),
+        csrf_token=csrf_token
     )
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-async def login(login_data: UserLogin, request: Request):
+async def login(login_data: UserLogin, request: Request, response: Response):
     client_ip = await get_client_ip(request)
     check_rate_limit(client_ip, "login")
-    
+
     user = db.get_user_by_username(login_data.username)
     if not user:
         raise Exceptions.UNAUTHORIZED
-    
+
     if not security_manager.verify_password(login_data.password, user["password_hash"]):
         db.increment_failed_login(user["user_id"], client_ip)
         raise Exceptions.UNAUTHORIZED
-    
+
     if user["locked_until"] and user["locked_until"] > timestamp():
         raise Exceptions.ACCOUNT_LOCKED
-    
+
     if user["is_banned"]:
         raise Exceptions.BANNED
-    
+
     db.update_user_login(user["user_id"], client_ip)
     access_token = security_manager.create_access_token({"sub": str(user["user_id"])})
-    
+
+    csrf_token = security_manager.generate_csrf_token()
+    user_agent = request.headers.get("user-agent", "")
+    session_id = db.create_user_session(user["user_id"], csrf_token, client_ip, user_agent)
+
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        max_age=24 * 3600,  # 24 hours
+        httponly=True,
+        secure=False,  # Set to True in production with HTTPS
+        samesite="strict"
+    )
+
     return TokenResponse(
         access_token=access_token,
         expires_in=security_manager.access_token_expire_minutes * 60,
-        user=UserResponse(**user)
+        user=UserResponse(**user),
+        csrf_token=csrf_token
     )
 
 @app.post("/api/auth/refresh", response_model=TokenResponse)
@@ -184,7 +244,7 @@ async def get_user(user_id: int):
     return UserResponse(**user)
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
-async def update_user_profile(user_id: int, update_data: dict, current_user: dict = Depends(get_current_user)):
+async def update_user_profile(user_id: int, update_data: dict, current_user: dict = Depends(verify_csrf_token)):
     validate_user_exists(user_id)
     validate_user_permissions(user_id, current_user)
     
@@ -224,7 +284,7 @@ async def get_user_preferences(user_id: int, current_user: dict = Depends(get_cu
     return preferences
 
 @app.put("/api/users/{user_id}/preferences")
-async def update_user_preferences(user_id: int, preferences_data: dict, current_user: dict = Depends(get_current_user)):
+async def update_user_preferences(user_id: int, preferences_data: dict, current_user: dict = Depends(verify_csrf_token)):
     validate_user_permissions(user_id, current_user, allow_self=True)
     
     allowed_fields = ["email_notifications", "theme", "timezone", "posts_per_page", "signature", "show_avatars", "show_signatures"]
@@ -239,7 +299,7 @@ async def get_all_users(page: int = 1, per_page: int = 20, current_user: dict = 
 
 @app.post("/api/admin/users/{user_id}/ban")
 @audit_action("user_banned")
-async def ban_user(user_id: int, ban_data: dict, request: Request, current_user: dict = Depends(require_admin)):
+async def ban_user(user_id: int, ban_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     user = validate_user_exists(user_id)
     validate_admin_action(user, current_user, "ban")
     
@@ -249,7 +309,7 @@ async def ban_user(user_id: int, ban_data: dict, request: Request, current_user:
 
 @app.post("/api/admin/users/{user_id}/unban")
 @audit_action("user_unbanned")
-async def unban_user(user_id: int, request: Request, current_user: dict = Depends(require_admin)):
+async def unban_user(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     validate_user_exists(user_id)
     db.unban_user(user_id)
     db.log_moderation_action(current_user["user_id"], "user", user_id, "unban")
@@ -257,7 +317,7 @@ async def unban_user(user_id: int, request: Request, current_user: dict = Depend
 
 @app.post("/api/admin/users/{user_id}/promote")
 @audit_action("admin_granted")
-async def make_user_admin(user_id: int, request: Request, current_user: dict = Depends(require_admin)):
+async def make_user_admin(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     user = validate_user_exists(user_id)
     if user["is_admin"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User is already an admin")
@@ -268,7 +328,7 @@ async def make_user_admin(user_id: int, request: Request, current_user: dict = D
 
 @app.post("/api/admin/users/{user_id}/demote")
 @audit_action("admin_revoked")
-async def remove_user_admin(user_id: int, request: Request, current_user: dict = Depends(require_admin)):
+async def remove_user_admin(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     user = validate_user_exists(user_id)
     if not user["is_admin"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User is not an admin")
@@ -285,7 +345,7 @@ async def get_boards():
 
 @app.post("/api/boards", response_model=BoardResponse)
 @audit_action("board_created", "board")
-async def create_board(board_data: BoardCreate, request: Request, current_user: dict = Depends(require_admin)):
+async def create_board(board_data: BoardCreate, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     board_id = db.create_board(board_data.name, board_data.description, current_user["user_id"])
     db.log_moderation_action(current_user["user_id"], "board", board_id, "create")
     board = db.get_board_by_id(board_id)
@@ -297,7 +357,7 @@ async def get_threads(board_id: int, page: int = 1, per_page: int = 20):
     return [ThreadResponse(**thread) for thread in threads]
 
 @app.post("/api/boards/{board_id}/threads", response_model=ThreadResponse)
-async def create_thread(board_id: int, thread_data: ThreadCreate, request: Request, current_user: dict = Depends(get_current_user)):
+async def create_thread(board_id: int, thread_data: ThreadCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
     check_rate_limit(str(current_user["user_id"]), "thread")
     
     if not db.board_exists(board_id):
@@ -316,7 +376,7 @@ async def get_thread(thread_id: int):
 
 @app.delete("/api/threads/{thread_id}")
 @audit_action("thread_deleted", "thread")
-async def delete_thread(thread_id: int, request: Request, current_user: dict = Depends(get_current_user)):
+async def delete_thread(thread_id: int, request: Request, current_user: dict = Depends(verify_csrf_token)):
     thread = db.thread_exists_and_accessible(thread_id)
     if not thread:
         raise Exceptions.NOT_FOUND
@@ -330,7 +390,7 @@ async def delete_thread(thread_id: int, request: Request, current_user: dict = D
 
 @app.patch("/api/threads/{thread_id}/lock")
 @audit_action("thread_locked", "thread")
-async def toggle_thread_lock(thread_id: int, lock_data: dict, request: Request, current_user: dict = Depends(require_admin)):
+async def toggle_thread_lock(thread_id: int, lock_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     if not db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
@@ -341,7 +401,7 @@ async def toggle_thread_lock(thread_id: int, lock_data: dict, request: Request, 
 
 @app.patch("/api/threads/{thread_id}/sticky")
 @audit_action("thread_stickied", "thread")
-async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Request, current_user: dict = Depends(require_admin)):
+async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     if not db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
@@ -357,7 +417,7 @@ async def get_posts(thread_id: int, page: int = 1, per_page: int = 20):
     return [PostResponse(**post) for post in posts]
 
 @app.post("/api/threads/{thread_id}/posts", response_model=PostResponse)
-async def create_post(thread_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(get_current_user)):
+async def create_post(thread_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
     check_rate_limit(str(current_user["user_id"]), "post")
     
     thread = db.thread_exists_and_accessible(thread_id)
@@ -380,7 +440,7 @@ async def get_post(post_id: int):
     return PostResponse(**post)
 
 @app.patch("/api/posts/{post_id}", response_model=PostResponse)
-async def edit_post(post_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(get_current_user)):
+async def edit_post(post_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
     check_rate_limit(str(current_user["user_id"]), "edit")
     
     post = db.get_post_with_context(post_id)
@@ -412,7 +472,7 @@ async def edit_post(post_id: int, post_data: PostCreate, request: Request, curre
 
 @app.delete("/api/posts/{post_id}")
 @audit_action("post_deleted", "post")
-async def delete_post(post_id: int, request: Request, current_user: dict = Depends(get_current_user)):
+async def delete_post(post_id: int, request: Request, current_user: dict = Depends(verify_csrf_token)):
     post = db.get_post_with_context(post_id)
     if not post:
         raise Exceptions.NOT_FOUND
@@ -432,7 +492,7 @@ async def delete_post(post_id: int, request: Request, current_user: dict = Depen
 
 @app.patch("/api/posts/{post_id}/restore")
 @audit_action("post_restored", "post")
-async def restore_post(post_id: int, request: Request, current_user: dict = Depends(require_admin)):
+async def restore_post(post_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     if not db.restore_post(post_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Deleted post not found or cannot be restored")
     

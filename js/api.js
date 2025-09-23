@@ -3,20 +3,27 @@ class ForumAPI {
         this.baseURL = baseURL;
         this.token = localStorage.getItem('auth_token');
         this.user = JSON.parse(localStorage.getItem('user') || 'null');
+        this.csrfToken = localStorage.getItem('csrf_token');
     }
 
-    setAuth(token, user) {
+    setAuth(token, user, csrfToken = null) {
         this.token = token;
         this.user = user;
+        this.csrfToken = csrfToken;
         localStorage.setItem('auth_token', token);
         localStorage.setItem('user', JSON.stringify(user));
+        if (csrfToken) {
+            localStorage.setItem('csrf_token', csrfToken);
+        }
     }
 
     clearAuth() {
         this.token = null;
         this.user = null;
+        this.csrfToken = null;
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user');
+        localStorage.removeItem('csrf_token');
     }
 
     async request(endpoint, options = {}) {
@@ -26,11 +33,16 @@ class ForumAPI {
                 'Content-Type': 'application/json',
                 ...options.headers
             },
+            credentials: 'include',
             ...options
         };
 
         if (this.token) {
             config.headers.Authorization = `Bearer ${this.token}`;
+        }
+
+        if (this.csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method?.toUpperCase())) {
+            config.headers['X-CSRF-Token'] = this.csrfToken;
         }
 
         try {
@@ -70,7 +82,7 @@ class ForumAPI {
         });
         
         if (response) {
-            this.setAuth(response.access_token, response.user);
+            this.setAuth(response.access_token, response.user, response.csrf_token);
         }
         return response;
     }
@@ -82,7 +94,7 @@ class ForumAPI {
         });
         
         if (response) {
-            this.setAuth(response.access_token, response.user);
+            this.setAuth(response.access_token, response.user, response.csrf_token);
         }
         return response;
     }
@@ -97,7 +109,7 @@ class ForumAPI {
         });
         
         if (response) {
-            this.setAuth(response.access_token, response.user);
+            this.setAuth(response.access_token, response.user, response.csrf_token);
         }
         return response;
     }
