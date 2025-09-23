@@ -6,6 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
@@ -64,6 +65,46 @@ def audit_action(action_type: str, target_type: str = "user"):
     return decorator
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Request size limit (1MB for API requests)
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 1024 * 1024:
+            return JSONResponse(
+                status_code=413,
+                content={"message": "Request entity too large"}
+            )
+
+        response = await call_next(request)
+
+        # Security headers
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+
+        # CSP for API endpoints - strict for JSON API
+        if request.url.path.startswith("/api/"):
+            response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none';"
+        else:
+            # CSP for serving static content
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data: https:; "
+                "connect-src 'self'; "
+                "font-src 'self'; "
+                "object-src 'none'; "
+                "media-src 'self'; "
+                "frame-ancestors 'none'; "
+                "base-uri 'self'; "
+                "form-action 'self';"
+            )
+
+        return response
+
 
 app = FastAPI(title="Forum API", description="RESTful API for forum system", version="1.0.0")
 
@@ -71,7 +112,14 @@ security = HTTPBearer()
 security_manager = SecurityManager(secret_key=SECRET_KEY)
 db = DatabaseManager(DB_PATH)
 
-app.add_middleware(CORSMiddleware, allow_origins=ALLOWED_ORIGINS, allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"]
+)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 async def get_client_ip(request: Request) -> str:
