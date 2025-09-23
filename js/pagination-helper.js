@@ -9,9 +9,9 @@ class PaginationHelper {
      * @param {number} itemsPerPage - Items per page
      * @returns {Object} Pagination metadata
      */
-    static calculatePagination(currentPage, totalItems, itemsPerPage = 20) {
-        const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
-        const validCurrentPage = Math.max(1, Math.min(currentPage, totalPages));
+    static calculatePagination(currentPage, totalItems, itemsPerPage = ForumConfig.pagination.defaultPerPage) {
+        const totalPages = Math.max(ForumConfig.misc.singleItem, Math.ceil(totalItems / itemsPerPage));
+        const validCurrentPage = Math.max(ForumConfig.misc.singleItem, Math.min(currentPage, totalPages));
 
         return {
             currentPage: validCurrentPage,
@@ -19,7 +19,7 @@ class PaginationHelper {
             totalItems,
             itemsPerPage,
             hasNext: validCurrentPage < totalPages,
-            hasPrev: validCurrentPage > 1
+            hasPrev: validCurrentPage > ForumConfig.misc.singleItem
         };
     }
 
@@ -30,7 +30,7 @@ class PaginationHelper {
      * @returns {string} HTML string for pagination
      */
     static renderPagination(pagination, containerId = 'pagination-container') {
-        if (pagination.totalPages <= 1) {
+        if (pagination.totalPages <= ForumConfig.misc.singleItem) {
             return '';
         }
 
@@ -39,13 +39,13 @@ class PaginationHelper {
         let html = `<div class="pagination" id="${containerId}">`;
 
         if (hasPrev) {
-            html += `<button class="pagination-btn" data-page="${currentPage - 1}">← Previous</button>`;
+            html += `<button class="pagination-btn" data-page="${currentPage - ForumConfig.misc.singleItem}">← Previous</button>`;
         }
 
         html += `<span class="pagination-info">Page ${currentPage} of ${totalPages}</span>`;
 
         if (hasNext) {
-            html += `<button class="pagination-btn" data-page="${currentPage + 1}">Next →</button>`;
+            html += `<button class="pagination-btn" data-page="${currentPage + ForumConfig.misc.singleItem}">Next →</button>`;
         }
 
         html += '</div>';

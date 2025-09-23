@@ -1,5 +1,5 @@
 class ForumAPI {
-    constructor(baseURL = 'http://10.0.1.251:8000') {
+    constructor(baseURL = ForumConfig.api.baseURL) {
         this.baseURL = baseURL;
         this.token = localStorage.getItem('auth_token');
         this.user = JSON.parse(localStorage.getItem('user') || 'null');
@@ -51,7 +51,7 @@ class ForumAPI {
         try {
             const response = await fetch(url, config);
             
-            if (response.status === 401) {
+            if (response.status === ForumConfig.httpStatus.unauthorized) {
                 this.clearAuth();
                 if (window.forum) {
                     window.forum.handleAuthError();
@@ -59,7 +59,7 @@ class ForumAPI {
                 return null;
             }
 
-            if (response.status === 404) {
+            if (response.status === ForumConfig.httpStatus.notFound) {
                 const errorData = await response.json().catch(() => ({ message: 'Not found' }));
                 throw new Error(errorData.message || 'Resource not found');
             }
@@ -128,7 +128,7 @@ class ForumAPI {
         });
     }
 
-    async getThreads(boardId, page = 1, perPage = 20) {
+    async getThreads(boardId, page = ForumConfig.pagination.defaultPage, perPage = ForumConfig.pagination.defaultPerPage) {
         return this.request(`/api/boards/${boardId}/threads?page=${page}&per_page=${perPage}`);
     }
 
@@ -178,7 +178,7 @@ class ForumAPI {
         });
     }
 
-    async getPosts(threadId, page = 1, perPage = 20) {
+    async getPosts(threadId, page = ForumConfig.pagination.defaultPage, perPage = ForumConfig.pagination.defaultPerPage) {
         return this.request(`/api/threads/${threadId}/posts?page=${page}&per_page=${perPage}`);
     }
 

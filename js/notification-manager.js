@@ -44,7 +44,7 @@ class NotificationManager {
 
         this.container.appendChild(notification);
         
-        setTimeout(() => notification.classList.add('show'), 10);
+        setTimeout(() => notification.classList.add('show'), ForumConfig.timing.animationDelay);
 
         return id;
     }
@@ -55,7 +55,7 @@ class NotificationManager {
 
     showError(message, options = {}) {
         return this.show(message, 'error', { 
-            duration: 8000,
+            duration: ForumConfig.notifications.defaultDuration,
             ...options 
         });
     }
@@ -91,7 +91,7 @@ class NotificationManager {
                 notification.element.parentNode.removeChild(notification.element);
             }
             this.notifications.delete(id);
-        }, 300);
+        }, ForumConfig.timing.mediumDelay);
     }
 
     hideAll() {
@@ -161,14 +161,8 @@ class NotificationManager {
     }
 
     getDefaultDuration(type) {
-        const durations = {
-            success: 4000,
-            error: 6000,
-            warning: 5000,
-            info: 4000,
-            loading: 0
-        };
-        return durations[type] || 4000;
+        const durations = ForumConfig.notifications.durations;
+        return durations[type] || ForumConfig.notifications.durations.info;
     }
 
     showProgress(message, currentValue, maxValue, options = {}) {
@@ -203,7 +197,7 @@ class NotificationManager {
         }
 
         if (percentage >= 100) {
-            setTimeout(() => this.hide(id), 1000);
+            setTimeout(() => this.hide(id), ForumConfig.notifications.progressHideDelay);
         }
     }
 
@@ -273,7 +267,7 @@ class NotificationManager {
         notification.retryCallback();
     }
 
-    showToast(message, type = 'info', duration = 3000) {
+    showToast(message, type = 'info', duration = ForumConfig.notifications.toastDuration) {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         toast.textContent = message;
@@ -286,7 +280,7 @@ class NotificationManager {
             border-radius: 25px;
             font-size: 14px;
             font-weight: 500;
-            z-index: 10000;
+            z-index: ${ForumConfig.notifications.zIndex};
             transition: transform 0.3s ease;
             ${this.getTypeStyles(type)}
         `;
@@ -295,7 +289,7 @@ class NotificationManager {
 
         setTimeout(() => {
             toast.style.transform = 'translateX(-50%) translateY(0)';
-        }, 10);
+        }, ForumConfig.timing.animationDelay);
 
         setTimeout(() => {
             toast.style.transform = 'translateX(-50%) translateY(100px)';
@@ -303,7 +297,7 @@ class NotificationManager {
                 if (toast.parentNode) {
                     toast.parentNode.removeChild(toast);
                 }
-            }, 300);
+            }, ForumConfig.timing.mediumDelay);
         }, duration);
     }
 

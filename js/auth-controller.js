@@ -291,7 +291,7 @@ class AuthController {
 
     getPasswordRequirements(password) {
         return [
-            { text: 'At least 10 characters', met: password.length >= 10 },
+            { text: `At least ${ForumConfig.validation.passwordMinLength} characters`, met: password.length >= ForumConfig.validation.passwordMinLength },
             { text: 'Contains uppercase letter', met: /[A-Z]/.test(password) },
             { text: 'Contains lowercase letter', met: /[a-z]/.test(password) },
             { text: 'Contains number', met: /\d/.test(password) },
@@ -356,7 +356,7 @@ class AuthController {
         
         setTimeout(() => {
             this.router.navigate(redirectPath);
-        }, 1000);
+        }, ForumConfig.timing.scrollDelay);
     }
 
     getRedirectPath() {
@@ -490,7 +490,7 @@ class AuthController {
                     console.warn('Token refresh failed:', error);
                 }
             }
-        }, 25 * 60 * 1000); // 25 minutes
+        }, ForumConfig.cache.sessionRefreshInterval);
     }
 
     destroy() {

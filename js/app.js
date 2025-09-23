@@ -235,7 +235,7 @@ class ForumApp {
                 autoSaveTimer = setTimeout(() => {
                     const formId = e.target.closest('form').getAttribute('data-form-id') || 'draft';
                     localStorage.setItem(`forum_draft_${formId}`, e.target.value);
-                }, 1000);
+                }, ForumConfig.timing.autoSaveDelay);
             }
         });
     }
@@ -257,15 +257,15 @@ class ForumApp {
                     console.warn('Token refresh failed');
                 });
             }
-        }, 25 * 60 * 1000);
+        }, ForumConfig.cache.sessionRefreshInterval);
 
         setInterval(() => {
             this.cleanupOldDrafts();
-        }, 60 * 60 * 1000);
+        }, ForumConfig.cache.draftCleanupInterval);
     }
 
     cleanupOldDrafts() {
-        const maxAge = 7 * 24 * 60 * 60 * 1000;
+        const maxAge = ForumConfig.cache.maxDraftAge;
         const now = Date.now();
         
         Object.keys(localStorage).forEach(key => {

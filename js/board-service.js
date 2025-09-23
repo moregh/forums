@@ -4,7 +4,7 @@ class BoardService {
         this.notifications = notifications;
         this.cachedBoards = null;
         this.lastFetch = 0;
-        this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
+        this.cacheTimeout = ForumConfig.cache.boardServiceTimeout;
     }
 
     async getBoards(forceRefresh = false) {
@@ -120,10 +120,10 @@ class BoardService {
     calculateActivityLevel(board) {
         const totalActivity = (board.thread_count || 0) + (board.post_count || 0);
         
-        if (totalActivity === 0) return 'inactive';
-        if (totalActivity < 10) return 'low';
-        if (totalActivity < 50) return 'medium';
-        if (totalActivity < 200) return 'high';
+        if (totalActivity === ForumConfig.misc.emptyCount) return 'inactive';
+        if (totalActivity < ForumConfig.boardActivity.lowActivityThreshold) return 'low';
+        if (totalActivity < ForumConfig.boardActivity.mediumActivityThreshold) return 'medium';
+        if (totalActivity < ForumConfig.boardActivity.highActivityThreshold) return 'high';
         return 'very-high';
     }
 
@@ -272,9 +272,9 @@ class BoardService {
 
     getBoardActivityIndicator(board) {
         const now = Date.now() / 1000;
-        const hour = 60 * 60;
-        const day = 24 * hour;
-        const week = 7 * day;
+        const hour = ForumConfig.timeConstants.hour;
+        const day = ForumConfig.timeConstants.day;
+        const week = ForumConfig.timeConstants.week;
 
         if (!board.last_post_at) {
             return { level: 'none', text: 'No activity', class: 'activity-none' };
@@ -417,11 +417,11 @@ class BoardService {
         ];
     }
 
-    getPopularBoards(boards, limit = 5) {
+    getPopularBoards(boards, limit = ForumConfig.limits.popularBoardsDefault) {
         return this.sortBoards(boards, 'activity').slice(0, limit);
     }
 
-    getRecentlyActiveBoards(boards, limit = 5) {
+    getRecentlyActiveBoards(boards, limit = ForumConfig.limits.recentlyActiveBoardsDefault) {
         return this.sortBoards(boards, 'last_activity').slice(0, limit);
     }
 
