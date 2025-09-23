@@ -6,9 +6,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
+import os
 from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
@@ -654,36 +655,73 @@ async def general_exception_handler(request: Request, exc: Exception):
         content=ErrorResponse(error="InternalServerError", message="An unexpected error occurred").dict()
     )
 
-# Static file serving with caching headers
-@app.get("/js/{file_path:path}")
-async def serve_js(file_path: str):
-    return FileResponse(
-        f"js/{file_path}",
-        media_type="application/javascript",
-        headers={
-            "Cache-Control": "public, max-age=86400",  # 24 hours
-            "ETag": f'"{hash(file_path)}"'
-        }
-    )
+# Mount static files
+app.mount("/js", StaticFiles(directory="js"), name="js")
 
-@app.get("/css/{file_path:path}")
-async def serve_css(file_path: str):
+# Only mount CSS directory if it exists
+if os.path.exists("css"):
+    app.mount("/css", StaticFiles(directory="css"), name="css")
+
+# Serve main CSS file
+@app.get("/styles.css")
+async def serve_main_css():
     return FileResponse(
-        f"css/{file_path}",
+        "styles.css",
         media_type="text/css",
         headers={
-            "Cache-Control": "public, max-age=86400",  # 24 hours
-            "ETag": f'"{hash(file_path)}"'
+            "Cache-Control": "public, max-age=86400",
+            "ETag": f'"{hash("styles.css")}"'
         }
     )
 
+# Serve favicon if it exists
+@app.get("/favicon.ico")
+async def serve_favicon():
+    if os.path.exists("favicon.ico"):
+        return FileResponse("favicon.ico")
+    else:
+        raise HTTPException(404)
+
+# Serve index.html for root
 @app.get("/")
 async def serve_index():
     return FileResponse("index.html")
 
+# Health check endpoint (before catch-all)
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "timestamp": timestamp()}
+    return {
+        "status": "healthy",
+        "timestamp": timestamp(),
+        "server_type": "integrated_fastapi",
+        "static_files": {
+            "js": os.path.exists("js"),
+            "index": os.path.exists("index.html"),
+            "styles": os.path.exists("styles.css")
+        }
+    }
+
+# SPA catch-all route - this must be LAST
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    # Check if it's a static file request that wasn't handled above
+    if full_path.startswith("api/"):
+        raise HTTPException(404, "API endpoint not found")
+
+    # Check for static file requests and reject them with 404
+    if (full_path.startswith("js/") or
+        full_path.startswith("css/") or
+        full_path.endswith(".css") or
+        full_path.endswith(".js") or
+        full_path.endswith(".ico") or
+        full_path.endswith(".png") or
+        full_path.endswith(".jpg") or
+        full_path.endswith(".gif") or
+        full_path.endswith(".svg")):
+        raise HTTPException(404, "Static file not found")
+
+    # For any other path, serve the SPA
+    return FileResponse("index.html")
 
 @app.on_event("startup")
 async def startup_event():
@@ -693,4 +731,7 @@ async def startup_event():
 
 if __name__ == "__main__":
     import uvicorn
+    print("Starting integrated forum server...")
+    print("Available at http://localhost:8000")
+    print("API docs at http://localhost:8000/docs")
     uvicorn.run(app, host="0.0.0.0", port=8000)
