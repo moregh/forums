@@ -41,7 +41,7 @@ def audit_action(action_type: str, target_type: str = "user"):
             try:
                 result = await func(*args, **kwargs)
                 
-                db.log_security_audit(
+                await db.log_security_audit(
                     user_id=user_id, # type: ignore
                     event_type=action_type,
                     ip_address=client_ip,
@@ -52,7 +52,7 @@ def audit_action(action_type: str, target_type: str = "user"):
                 return result
                 
             except Exception as e:
-                db.log_security_audit(
+                await db.log_security_audit(
                     user_id=user_id, # type: ignore
                     event_type=f"{action_type}_failed",
                     ip_address=client_ip,
@@ -132,7 +132,7 @@ async def get_current_user(request: Request, credentials: HTTPAuthorizationCrede
         if not user_id:
             raise Exceptions.UNAUTHORIZED
 
-        user = db.get_user_by_id(int(user_id))
+        user = await db.get_user_by_id(int(user_id))
         if not user or user.get("is_banned"):
             raise Exceptions.UNAUTHORIZED
 
@@ -149,11 +149,11 @@ async def verify_csrf_token(request: Request, current_user: dict = Depends(get_c
     if not session_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Session required")
 
-    stored_csrf_token = db.get_session_csrf_token(session_id)
+    stored_csrf_token = await db.get_session_csrf_token(session_id)
     if not stored_csrf_token or not security_manager.verify_csrf_token(csrf_token, stored_csrf_token):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid CSRF token")
 
-    db.update_session_activity(session_id)
+    await db.update_session_activity(session_id)
     return current_user
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
@@ -170,20 +170,20 @@ async def verify_csrf_admin(request: Request, current_user: dict = Depends(requi
     if not session_id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Session required")
 
-    stored_csrf_token = db.get_session_csrf_token(session_id)
+    stored_csrf_token = await db.get_session_csrf_token(session_id)
     if not stored_csrf_token or not security_manager.verify_csrf_token(csrf_token, stored_csrf_token):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Invalid CSRF token")
 
-    db.update_session_activity(session_id)
+    await db.update_session_activity(session_id)
     return current_user
 
-def check_rate_limit(identifier: str, action: str):
+async def check_rate_limit(identifier: str, action: str):
     limit, window = RATE_LIMITS[action]
-    if not db.check_rate_limit(identifier, action, limit, window):
+    if not await db.check_rate_limit(identifier, action, limit, window):
         raise Exceptions.TOO_MANY_REQUESTS
 
-def validate_user_exists(user_id: int) -> dict:
-    user = db.get_user_by_id(user_id)
+async def validate_user_exists(user_id: int) -> dict:
+    user = await db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return user
@@ -205,19 +205,19 @@ def validate_admin_action(target_user: dict, current_user: dict, action: str):
 @app.post("/api/auth/register", response_model=TokenResponse)
 async def register(user_data: UserRegister, request: Request, response: Response):
     client_ip = await get_client_ip(request)
-    check_rate_limit(client_ip, "register")
+    await check_rate_limit(client_ip, "register")
 
-    if db.check_user_exists(user_data.username, user_data.email):
+    if await db.check_user_exists(user_data.username, user_data.email):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Username or email already exists")
 
     password_hash, password_salt = security_manager.hash_password(user_data.password)
-    user_id = db.create_user(user_data.username, user_data.email, password_hash, password_salt)
+    user_id = await db.create_user(user_data.username, user_data.email, password_hash, password_salt)
     access_token = security_manager.create_access_token({"sub": str(user_id)})
-    user = db.get_user_by_id(user_id)
+    user = await db.get_user_by_id(user_id)
 
     csrf_token = security_manager.generate_csrf_token()
     user_agent = request.headers.get("user-agent", "")
-    session_id = db.create_user_session(user_id, csrf_token, client_ip, user_agent)
+    session_id = await db.create_user_session(user_id, csrf_token, client_ip, user_agent)
 
     response.set_cookie(
         key="session_id",
@@ -238,14 +238,14 @@ async def register(user_data: UserRegister, request: Request, response: Response
 @app.post("/api/auth/login", response_model=TokenResponse)
 async def login(login_data: UserLogin, request: Request, response: Response):
     client_ip = await get_client_ip(request)
-    check_rate_limit(client_ip, "login")
+    await check_rate_limit(client_ip, "login")
 
-    user = db.get_user_by_username(login_data.username)
+    user = await db.get_user_by_username(login_data.username)
     if not user:
         raise Exceptions.UNAUTHORIZED
 
     if not security_manager.verify_password(login_data.password, user["password_hash"]):
-        db.increment_failed_login(user["user_id"], client_ip)
+        await db.increment_failed_login(user["user_id"], client_ip)
         raise Exceptions.UNAUTHORIZED
 
     if user["locked_until"] and user["locked_until"] > timestamp():
@@ -254,12 +254,12 @@ async def login(login_data: UserLogin, request: Request, response: Response):
     if user["is_banned"]:
         raise Exceptions.BANNED
 
-    db.update_user_login(user["user_id"], client_ip)
+    await db.update_user_login(user["user_id"], client_ip)
     access_token = security_manager.create_access_token({"sub": str(user["user_id"])})
 
     csrf_token = security_manager.generate_csrf_token()
     user_agent = request.headers.get("user-agent", "")
-    session_id = db.create_user_session(user["user_id"], csrf_token, client_ip, user_agent)
+    session_id = await db.create_user_session(user["user_id"], csrf_token, client_ip, user_agent)
 
     response.set_cookie(
         key="session_id",
@@ -288,12 +288,12 @@ async def refresh_token(current_user: dict = Depends(get_current_user)):
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 async def get_user(user_id: int):
-    user = validate_user_exists(user_id)
+    user = await validate_user_exists(user_id)
     return UserResponse(**user)
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
 async def update_user_profile(user_id: int, update_data: dict, current_user: dict = Depends(verify_csrf_token)):
-    validate_user_exists(user_id)
+    await validate_user_exists(user_id)
     validate_user_permissions(user_id, current_user)
     
     allowed_fields = ["avatar_url"]
@@ -304,21 +304,21 @@ async def update_user_profile(user_id: int, update_data: dict, current_user: dic
     if not filtered_updates:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No valid fields to update")
     
-    db.update_user_profile(user_id, filtered_updates)
-    updated_user = db.get_user_by_id(user_id)
+    await db.update_user_profile(user_id, filtered_updates)
+    updated_user = await db.get_user_by_id(user_id)
     return UserResponse(**updated_user) # type: ignore
 
 @app.get("/api/users/{user_id}/info")
 async def get_user_info(user_id: int, current_user: dict = Depends(get_current_user)):
     validate_user_permissions(user_id, current_user, allow_self=True)
-    validate_user_exists(user_id)
-    user_info = db.get_user_info(user_id)
+    await validate_user_exists(user_id)
+    user_info = await db.get_user_info(user_id)
     return UserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/public", response_model=PublicUserInfo)
 async def get_public_user_info(user_id: int):
-    validate_user_exists(user_id)
-    user_info = db.get_user_info(user_id)
+    await validate_user_exists(user_id)
+    user_info = await db.get_user_info(user_id)
     if not user_info:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return PublicUserInfo(**user_info)
@@ -326,7 +326,7 @@ async def get_public_user_info(user_id: int):
 @app.get("/api/users/{user_id}/preferences")
 async def get_user_preferences(user_id: int, current_user: dict = Depends(get_current_user)):
     validate_user_permissions(user_id, current_user, allow_self=True)
-    preferences = db.get_user_preferences(user_id)
+    preferences = await db.get_user_preferences(user_id)
     if not preferences:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User preferences not found")
     return preferences
@@ -338,86 +338,86 @@ async def update_user_preferences(user_id: int, preferences_data: dict, current_
     allowed_fields = ["email_notifications", "theme", "timezone", "posts_per_page", "signature", "show_avatars", "show_signatures"]
     filtered_prefs = {k: v for k, v in preferences_data.items() if k in allowed_fields}
     
-    db.update_user_preferences(user_id, filtered_prefs)
-    return db.get_user_preferences(user_id)
+    await db.update_user_preferences(user_id, filtered_prefs)
+    return await db.get_user_preferences(user_id)
 
 @app.get("/api/admin/users")
 async def get_all_users(page: int = 1, per_page: int = 20, current_user: dict = Depends(require_admin)):
-    return db.get_all_users(page, per_page)
+    return await db.get_all_users(page, per_page)
 
 @app.post("/api/admin/users/{user_id}/ban")
 @audit_action("user_banned")
 async def ban_user(user_id: int, ban_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    user = validate_user_exists(user_id)
+    user = await validate_user_exists(user_id)
     validate_admin_action(user, current_user, "ban")
     
-    db.ban_user(user_id)
-    db.log_moderation_action(current_user["user_id"], "user", user_id, "ban", ban_data.get("reason", "No reason provided"))
+    await db.ban_user(user_id)
+    await db.log_moderation_action(current_user["user_id"], "user", user_id, "ban", ban_data.get("reason", "No reason provided"))
     return {"message": "User banned successfully"}
 
 @app.post("/api/admin/users/{user_id}/unban")
 @audit_action("user_unbanned")
 async def unban_user(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    validate_user_exists(user_id)
-    db.unban_user(user_id)
-    db.log_moderation_action(current_user["user_id"], "user", user_id, "unban")
+    await validate_user_exists(user_id)
+    await db.unban_user(user_id)
+    await db.log_moderation_action(current_user["user_id"], "user", user_id, "unban")
     return {"message": "User unbanned successfully"}
 
 @app.post("/api/admin/users/{user_id}/promote")
 @audit_action("admin_granted")
 async def make_user_admin(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    user = validate_user_exists(user_id)
+    user = await validate_user_exists(user_id)
     if user["is_admin"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User is already an admin")
     
-    db.promote_user_to_admin(user_id)
-    db.log_moderation_action(current_user["user_id"], "user", user_id, "promote_admin")
+    await db.promote_user_to_admin(user_id)
+    await db.log_moderation_action(current_user["user_id"], "user", user_id, "promote_admin")
     return {"message": "User promoted to admin successfully"}
 
 @app.post("/api/admin/users/{user_id}/demote")
 @audit_action("admin_revoked")
 async def remove_user_admin(user_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    user = validate_user_exists(user_id)
+    user = await validate_user_exists(user_id)
     if not user["is_admin"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "User is not an admin")
     validate_admin_action(user, current_user, "demote")
     
-    db.demote_user_from_admin(user_id)
-    db.log_moderation_action(current_user["user_id"], "user", user_id, "demote_admin")
+    await db.demote_user_from_admin(user_id)
+    await db.log_moderation_action(current_user["user_id"], "user", user_id, "demote_admin")
     return {"message": "Admin privileges removed successfully"}
 
 @app.get("/api/boards", response_model=List[BoardResponse])
 async def get_boards():
-    boards = db.get_all_boards()
+    boards = await db.get_all_boards()
     return [BoardResponse(**board) for board in boards]
 
 @app.post("/api/boards", response_model=BoardResponse)
 @audit_action("board_created", "board")
 async def create_board(board_data: BoardCreate, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    board_id = db.create_board(board_data.name, board_data.description, current_user["user_id"])
-    db.log_moderation_action(current_user["user_id"], "board", board_id, "create")
-    board = db.get_board_by_id(board_id)
+    board_id = await db.create_board(board_data.name, board_data.description, current_user["user_id"])
+    await db.log_moderation_action(current_user["user_id"], "board", board_id, "create")
+    board = await db.get_board_by_id(board_id)
     return BoardResponse(**board) # type: ignore
 
 @app.get("/api/boards/{board_id}/threads", response_model=List[ThreadResponse])
 async def get_threads(board_id: int, page: int = 1, per_page: int = 20):
-    threads = db.get_threads_by_board(board_id, page, per_page)
+    threads = await db.get_threads_by_board(board_id, page, per_page)
     return [ThreadResponse(**thread) for thread in threads]
 
 @app.post("/api/boards/{board_id}/threads", response_model=ThreadResponse)
 async def create_thread(board_id: int, thread_data: ThreadCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
-    check_rate_limit(str(current_user["user_id"]), "thread")
+    await check_rate_limit(str(current_user["user_id"]), "thread")
     
-    if not db.board_exists(board_id):
+    if not await db.board_exists(board_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Board not found")
     
-    thread_id = db.create_thread(board_id, current_user["user_id"], thread_data.title, thread_data.content)
-    thread = db.get_thread_by_id(thread_id)
+    thread_id = await db.create_thread(board_id, current_user["user_id"], thread_data.title, thread_data.content)
+    thread = await db.get_thread_by_id(thread_id)
     return ThreadResponse(**thread) # type: ignore
 
 @app.get("/api/threads/{thread_id}", response_model=ThreadResponse)
 async def get_thread(thread_id: int):
-    thread = db.get_thread_by_id(thread_id)
+    thread = await db.get_thread_by_id(thread_id)
     if not thread:
         raise Exceptions.NOT_FOUND
     return ThreadResponse(**thread)
@@ -425,50 +425,50 @@ async def get_thread(thread_id: int):
 @app.delete("/api/threads/{thread_id}")
 @audit_action("thread_deleted", "thread")
 async def delete_thread(thread_id: int, request: Request, current_user: dict = Depends(verify_csrf_token)):
-    thread = db.thread_exists_and_accessible(thread_id)
+    thread = await db.thread_exists_and_accessible(thread_id)
     if not thread:
         raise Exceptions.NOT_FOUND
     
     if thread["user_id"] != current_user["user_id"] and not current_user.get("is_admin"):
         raise Exceptions.FORBIDDEN
     
-    db.delete_thread(thread_id)
-    db.log_moderation_action(current_user["user_id"], "thread", thread_id, "delete")
+    await db.delete_thread(thread_id)
+    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "delete")
     return {"message": "Thread deleted successfully"}
 
 @app.patch("/api/threads/{thread_id}/lock")
 @audit_action("thread_locked", "thread")
 async def toggle_thread_lock(thread_id: int, lock_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    if not db.thread_exists_and_accessible(thread_id):
+    if not await db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
     locked = lock_data.get("locked", True)
-    db.update_thread_lock_status(thread_id, locked)
-    db.log_moderation_action(current_user["user_id"], "thread", thread_id, "lock" if locked else "unlock")
+    await db.update_thread_lock_status(thread_id, locked)
+    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "lock" if locked else "unlock")
     return {"message": f"Thread {'locked' if locked else 'unlocked'} successfully"}
 
 @app.patch("/api/threads/{thread_id}/sticky")
 @audit_action("thread_stickied", "thread")
 async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    if not db.thread_exists_and_accessible(thread_id):
+    if not await db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
     sticky = sticky_data.get("sticky", True)
-    db.update_thread_sticky_status(thread_id, sticky)
-    db.log_moderation_action(current_user["user_id"], "thread", thread_id, "sticky" if sticky else "unsticky")
+    await db.update_thread_sticky_status(thread_id, sticky)
+    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "sticky" if sticky else "unsticky")
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
 @app.get("/api/threads/{thread_id}/posts", response_model=List[PostResponse])
 async def get_posts(thread_id: int, page: int = 1, per_page: int = 20):
-    db.increment_thread_view_count(thread_id)
-    posts = db.get_posts_by_thread(thread_id, page, per_page)
+    await db.increment_thread_view_count(thread_id)
+    posts = await db.get_posts_by_thread(thread_id, page, per_page)
     return [PostResponse(**post) for post in posts]
 
 @app.post("/api/threads/{thread_id}/posts", response_model=PostResponse)
 async def create_post(thread_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
-    check_rate_limit(str(current_user["user_id"]), "post")
+    await check_rate_limit(str(current_user["user_id"]), "post")
     
-    thread = db.thread_exists_and_accessible(thread_id)
+    thread = await db.thread_exists_and_accessible(thread_id)
     if not thread:
         raise Exceptions.NOT_FOUND
     if thread["locked"]:
@@ -476,22 +476,22 @@ async def create_post(thread_id: int, post_data: PostCreate, request: Request, c
     if thread["board_deleted"]:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Board not found")
     
-    post_id = db.create_post(thread_id, current_user["user_id"], post_data.content)
-    post = db.get_post_by_id(post_id)
+    post_id = await db.create_post(thread_id, current_user["user_id"], post_data.content)
+    post = await db.get_post_by_id(post_id)
     return PostResponse(**post) # type: ignore
 
 @app.get("/api/posts/{post_id}", response_model=PostResponse)
 async def get_post(post_id: int):
-    post = db.get_post_by_id(post_id)
+    post = await db.get_post_by_id(post_id)
     if not post:
         raise Exceptions.NOT_FOUND
     return PostResponse(**post)
 
 @app.patch("/api/posts/{post_id}", response_model=PostResponse)
 async def edit_post(post_id: int, post_data: PostCreate, request: Request, current_user: dict = Depends(verify_csrf_token)):
-    check_rate_limit(str(current_user["user_id"]), "edit")
+    await check_rate_limit(str(current_user["user_id"]), "edit")
     
-    post = db.get_post_with_context(post_id)
+    post = await db.get_post_with_context(post_id)
     if not post:
         raise Exceptions.NOT_FOUND
     
@@ -506,7 +506,7 @@ async def edit_post(post_id: int, post_data: PostCreate, request: Request, curre
     
     if current_user["user_id"] != post["user_id"] and current_user.get("is_admin"):
         client_ip = await get_client_ip(request)
-        db.log_security_audit(
+        await db.log_security_audit(
             user_id=post["user_id"],
             event_type="post_edited_by_admin",
             ip_address=client_ip,
@@ -514,14 +514,14 @@ async def edit_post(post_id: int, post_data: PostCreate, request: Request, curre
             event_data=f'{{"moderator_id": {current_user["user_id"]}, "post_id": {post_id}}}'
         )
     
-    db.update_post(post_id, post_data.content, current_user["user_id"])
-    updated_post = db.get_post_by_id(post_id)
+    await db.update_post(post_id, post_data.content, current_user["user_id"])
+    updated_post = await db.get_post_by_id(post_id)
     return PostResponse(**updated_post) # type: ignore
 
 @app.delete("/api/posts/{post_id}")
 @audit_action("post_deleted", "post")
 async def delete_post(post_id: int, request: Request, current_user: dict = Depends(verify_csrf_token)):
-    post = db.get_post_with_context(post_id)
+    post = await db.get_post_with_context(post_id)
     if not post:
         raise Exceptions.NOT_FOUND
     
@@ -531,46 +531,46 @@ async def delete_post(post_id: int, request: Request, current_user: dict = Depen
     if post["locked"] and not current_user.get("is_admin"):
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete posts in locked thread")
     
-    db.delete_post(post_id)
+    await db.delete_post(post_id)
     
     if current_user.get("is_admin"):
-        db.log_moderation_action(current_user["user_id"], "post", post_id, "delete")
+        await db.log_moderation_action(current_user["user_id"], "post", post_id, "delete")
     
     return {"message": "Post deleted successfully"}
 
 @app.patch("/api/posts/{post_id}/restore")
 @audit_action("post_restored", "post")
 async def restore_post(post_id: int, request: Request, current_user: dict = Depends(verify_csrf_admin)):
-    if not db.restore_post(post_id):
+    if not await db.restore_post(post_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Deleted post not found or cannot be restored")
     
-    db.log_moderation_action(current_user["user_id"], "post", post_id, "restore")
+    await db.log_moderation_action(current_user["user_id"], "post", post_id, "restore")
     return {"message": "Post restored successfully"}
 
 @app.get("/api/posts/{post_id}/history")
 async def get_post_edit_history(post_id: int, current_user: dict = Depends(get_current_user)):
-    post = db.get_post_with_context(post_id)
+    post = await db.get_post_with_context(post_id)
     if not post:
         raise Exceptions.NOT_FOUND
     
     if post["user_id"] != current_user["user_id"] and not current_user.get("is_admin"):
         raise Exceptions.FORBIDDEN
     
-    return db.get_post_edit_history(post_id)
+    return await db.get_post_edit_history(post_id)
 
 @app.get("/api/search")
 async def search_forum(q: str, type: str = "all", page: int = 1, per_page: int = 20):
     if len(q.strip()) < 3:
         raise Exceptions.SEARCH_TOO_SHORT
-    return db.search_forum_content(q, type, page, per_page)
+    return await db.search_forum_content(q, type, page, per_page)
 
 @app.get("/api/stats")
 async def get_forum_statistics():
-    return db.get_forum_statistics()
+    return await db.get_forum_statistics()
 
 @app.get("/api/admin/moderation-log")
 async def get_moderation_log(page: int = 1, per_page: int = 50, current_user: dict = Depends(require_admin)):
-    return db.get_moderation_log(page, per_page)
+    return await db.get_moderation_log(page, per_page)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
