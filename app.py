@@ -18,6 +18,11 @@ from security import SecurityManager
 from functools import wraps, lru_cache
 from utils import timestamp
 from config import *
+from config import (DEFAULT_HOST, DEFAULT_PORT, MAX_REQUEST_SIZE_MB, GZIP_MIN_SIZE,
+                   USER_INFO_CACHE_TTL, PUBLIC_USER_INFO_CACHE_TTL, STATS_CACHE_TTL,
+                   DEFAULT_PAGE_SIZE, ADMIN_PAGE_SIZE, SEARCH_QUERY_MIN_LENGTH,
+                   HTTP_REQUEST_ENTITY_TOO_LARGE, HTTP_NOT_FOUND, HTTP_INTERNAL_SERVER_ERROR,
+                   CACHE_MAX_AGE_24H, SECONDS_PER_DAY, SECONDS_PER_HOUR, MINUTES_15)
 import asyncio
 import time
 
@@ -74,9 +79,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Request size limit (1MB for API requests)
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 1024 * 1024:
+        if content_length and int(content_length) > MAX_REQUEST_SIZE_MB * 1024 * 1024:
             return JSONResponse(
-                status_code=413,
+                status_code=HTTP_REQUEST_ENTITY_TOO_LARGE,
                 content={"message": "Request entity too large"}
             )
 
@@ -131,10 +136,10 @@ def cleanup_expired_cache():
 # Cache cleanup task
 async def periodic_cache_cleanup():
     while True:
-        await asyncio.sleep(300)  # Every 5 minutes
+        await asyncio.sleep(STATS_CACHE_TTL)  # Every 5 minutes
         cleanup_expired_cache()
 
-app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(GZipMiddleware, minimum_size=GZIP_MIN_SIZE)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -245,7 +250,7 @@ async def register(user_data: UserRegister, request: Request, response: Response
     response.set_cookie(
         key="session_id",
         value=session_id,
-        max_age=24 * 3600,  # 24 hours
+        max_age=CACHE_MAX_AGE_24H,  # 24 hours
         httponly=True,
         secure=False,  # Set to True in production with HTTPS
         samesite="strict"
@@ -287,7 +292,7 @@ async def login(login_data: UserLogin, request: Request, response: Response):
     response.set_cookie(
         key="session_id",
         value=session_id,
-        max_age=24 * 3600,  # 24 hours
+        max_age=CACHE_MAX_AGE_24H,  # 24 hours
         httponly=True,
         secure=False,  # Set to True in production with HTTPS
         samesite="strict"
@@ -359,7 +364,7 @@ async def get_user_info(user_id: int, current_user: dict = Depends(get_current_u
             return UserInfo(**cached_data)
 
     user_info = await db.get_user_info(user_id)
-    user_info_cache[cache_key] = (user_info, current_time + 120)  # 2 minutes
+    user_info_cache[cache_key] = (user_info, current_time + USER_INFO_CACHE_TTL)  # 2 minutes
     return UserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/public", response_model=PublicUserInfo)
@@ -379,7 +384,7 @@ async def get_public_user_info(user_id: int):
     if not user_info:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
 
-    user_info_cache[cache_key] = (user_info, current_time + 300)  # 5 minutes
+    user_info_cache[cache_key] = (user_info, current_time + PUBLIC_USER_INFO_CACHE_TTL)  # 5 minutes
     return PublicUserInfo(**user_info)
 
 @app.get("/api/users/{user_id}/preferences")
@@ -401,7 +406,7 @@ async def update_user_preferences(user_id: int, preferences_data: dict, current_
     return await db.get_user_preferences(user_id)
 
 @app.get("/api/admin/users")
-async def get_all_users(page: int = 1, per_page: int = 20, current_user: dict = Depends(require_admin)):
+async def get_all_users(page: int = 1, per_page: int = DEFAULT_PAGE_SIZE, current_user: dict = Depends(require_admin)):
     return await db.get_all_users(page, per_page)
 
 @app.post("/api/admin/users/{user_id}/ban")
@@ -449,7 +454,7 @@ async def remove_user_admin(user_id: int, request: Request, current_user: dict =
 async def get_boards(response: Response):
     boards = await db.get_all_boards()
     # Cache boards list for 5 minutes since it doesn't change often
-    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["Cache-Control"] = f"public, max-age={STATS_CACHE_TTL}"
     return [BoardResponse(**board) for board in boards]
 
 @app.post("/api/boards", response_model=BoardResponse)
@@ -461,7 +466,7 @@ async def create_board(board_data: BoardCreate, request: Request, current_user: 
     return BoardResponse(**board) # type: ignore
 
 @app.get("/api/boards/{board_id}/threads", response_model=List[ThreadResponse])
-async def get_threads(board_id: int, page: int = 1, per_page: int = 20):
+async def get_threads(board_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE):
     threads = await db.get_threads_by_board(board_id, page, per_page)
     return [ThreadResponse(**thread) for thread in threads]
 
@@ -520,7 +525,7 @@ async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Reque
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
 @app.get("/api/threads/{thread_id}/posts", response_model=List[PostResponse])
-async def get_posts(thread_id: int, page: int = 1, per_page: int = 20):
+async def get_posts(thread_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE):
     await db.increment_thread_view_count(thread_id)
     posts = await db.get_posts_by_thread(thread_id, page, per_page)
     return [PostResponse(**post) for post in posts]
@@ -629,8 +634,8 @@ async def get_post_edit_history(post_id: int, current_user: dict = Depends(get_c
     return await db.get_post_edit_history(post_id)
 
 @app.get("/api/search")
-async def search_forum(q: str, type: str = "all", page: int = 1, per_page: int = 20):
-    if len(q.strip()) < 3:
+async def search_forum(q: str, type: str = "all", page: int = 1, per_page: int = DEFAULT_PAGE_SIZE):
+    if len(q.strip()) < SEARCH_QUERY_MIN_LENGTH:
         raise Exceptions.SEARCH_TOO_SHORT
     return await db.search_forum_content(q, type, page, per_page)
 
@@ -643,25 +648,25 @@ async def get_forum_statistics():
 
     stats = await db.get_forum_statistics()
     stats_cache["data"] = stats
-    stats_cache["expires"] = current_time + 300  # 5 minutes
+    stats_cache["expires"] = current_time + STATS_CACHE_TTL  # 5 minutes
     return stats
 
 @app.get("/api/admin/moderation-log")
-async def get_moderation_log(page: int = 1, per_page: int = 50, current_user: dict = Depends(require_admin)):
+async def get_moderation_log(page: int = 1, per_page: int = ADMIN_PAGE_SIZE, current_user: dict = Depends(require_admin)):
     return await db.get_moderation_log(page, per_page)
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
-        content=ErrorResponse(error=exc.__class__.__name__, message=exc.detail).dict()
+        content=ErrorResponse(error=exc.__class__.__name__, message=exc.detail).model_dump()
     )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
-        status_code=500,
-        content=ErrorResponse(error="InternalServerError", message="An unexpected error occurred").dict()
+        status_code=HTTP_INTERNAL_SERVER_ERROR,
+        content=ErrorResponse(error="InternalServerError", message="An unexpected error occurred").model_dump()
     )
 
 # Mount static files
@@ -678,7 +683,7 @@ async def serve_main_css():
         "styles.css",
         media_type="text/css",
         headers={
-            "Cache-Control": "public, max-age=86400",
+            "Cache-Control": f"public, max-age={CACHE_MAX_AGE_24H}",
             "ETag": f'"{hash("styles.css")}"'
         }
     )
@@ -689,7 +694,7 @@ async def serve_favicon():
     if os.path.exists("favicon.ico"):
         return FileResponse("favicon.ico")
     else:
-        raise HTTPException(404)
+        raise HTTPException(HTTP_NOT_FOUND)
 
 # Serve index.html for root
 @app.get("/")
@@ -715,7 +720,7 @@ async def health_check():
 async def serve_spa(full_path: str):
     # Check if it's a static file request that wasn't handled above
     if full_path.startswith("api/"):
-        raise HTTPException(404, "API endpoint not found")
+        raise HTTPException(HTTP_NOT_FOUND, "API endpoint not found")
 
     # Check for static file requests and reject them with 404
     if (full_path.startswith("js/") or
@@ -727,7 +732,7 @@ async def serve_spa(full_path: str):
         full_path.endswith(".jpg") or
         full_path.endswith(".gif") or
         full_path.endswith(".svg")):
-        raise HTTPException(404, "Static file not found")
+        raise HTTPException(HTTP_NOT_FOUND, "Static file not found")
 
     # For any other path, serve the SPA
     return FileResponse("index.html")
@@ -743,4 +748,4 @@ if __name__ == "__main__":
     print("Starting integrated forum server...")
     print("Available at http://localhost:8000")
     print("API docs at http://localhost:8000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=DEFAULT_HOST, port=DEFAULT_PORT)

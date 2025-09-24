@@ -6,6 +6,7 @@ Serves both the FastAPI backend and static frontend files
 import uvicorn
 import os
 import sys
+from config import DEFAULT_HOST, DEFAULT_PORT
 
 def main():
     # Change to the directory containing this script
@@ -29,8 +30,8 @@ def main():
         # Run the server
         uvicorn.run(
             app,
-            host="0.0.0.0",
-            port=8000,
+            host=DEFAULT_HOST,
+            port=DEFAULT_PORT,
             reload=False,  # Set to True for development
             access_log=True
         )

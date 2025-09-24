@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from functools import lru_cache, wraps
 import hashlib
 import json
+from config import (DEFAULT_CACHE_TTL, CACHE_CLEANUP_INTERVAL, CACHE_EXPIRE_TIME,
+                   USER_CACHE_TTL, BOARD_CACHE_TTL, THREAD_CACHE_TTL,
+                   DEFAULT_PAGE_SIZE, ADMIN_PAGE_SIZE, RECENT_POSTS_LIMIT,
+                   RANK_VETERAN_POSTS, RANK_ACTIVE_POSTS, RANK_REGULAR_POSTS, RANK_MEMBER_POSTS,
+                   SECONDS_PER_DAY, ONLINE_STATUS_MINUTES, RECENT_ACTIVITY_HOURS,
+                   RATE_LIMIT_WINDOW_DEFAULT, SESSION_EXPIRE_HOURS, SESSION_TOKEN_BYTES,
+                   FAILED_LOGIN_RESET, MINUTES_15, SECONDS_PER_HOUR)
 
 
 def timestamp() -> float:
@@ -62,7 +69,7 @@ class AsyncTTLCache:
 # Global cache instance
 db_cache = AsyncTTLCache()
 
-def async_ttl_cache(ttl: int = 300):
+def async_ttl_cache(ttl: int = DEFAULT_CACHE_TTL):
     """
     Async-compatible TTL cache decorator
     ttl: Time-to-live in seconds (default 5 minutes)
@@ -102,8 +109,8 @@ class DatabaseManager:
     async def _periodic_cache_cleanup(self):
         """Periodically clean up expired cache entries"""
         while True:
-            await asyncio.sleep(600)  # Every 10 minutes
-            db_cache.clear_expired(ttl=1800)  # Remove entries older than 30 minutes
+            await asyncio.sleep(CACHE_CLEANUP_INTERVAL)  # Every 10 minutes
+            db_cache.clear_expired(ttl=CACHE_EXPIRE_TIME)  # Remove entries older than 30 minutes
 
     async def stop_cache_cleanup(self):
         """Stop background cache cleanup task"""
@@ -192,7 +199,7 @@ class DatabaseManager:
             return lastrowid  # type: ignore
 
     
-    @async_ttl_cache(ttl=300)  # Cache for 5 minutes
+    @async_ttl_cache(ttl=USER_CACHE_TTL)  # Cache for 5 minutes
     async def get_user_by_username(self, username: str) -> Optional[Dict]:
         """Get user by username"""
         user = await self.execute_query(
@@ -202,7 +209,7 @@ class DatabaseManager:
         )
         return dict(user) if user else None
     
-    @async_ttl_cache(ttl=300)  # Cache for 5 minutes
+    @async_ttl_cache(ttl=USER_CACHE_TTL)  # Cache for 5 minutes
     async def get_user_by_id(self, user_id: int) -> Optional[Dict]:
         """Get user by ID"""
         user = await self.execute_query(
@@ -288,7 +295,7 @@ class DatabaseManager:
         return True
     
     
-    async def get_all_users(self, page: int = 1, per_page: int = 20) -> List[Dict]:
+    async def get_all_users(self, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE) -> List[Dict]:
         """Get all users with pagination"""
         offset = (page - 1) * per_page
         users = await self.execute_query("""
@@ -320,7 +327,7 @@ class DatabaseManager:
     
     async def get_user_info(self, user_id: int) -> Optional[Dict]:
         """Get user info with statistics for display in info cards"""
-        user = await self.execute_query("""
+        user = await self.execute_query(f"""
             SELECT
                 u.user_id,
                 u.username,
@@ -339,16 +346,16 @@ class DatabaseManager:
                     ELSE 'offline'
                 END as activity_status,
                 CASE
-                    WHEN u.post_count >= 1000 THEN 'veteran'
-                    WHEN u.post_count >= 500 THEN 'active'
-                    WHEN u.post_count >= 100 THEN 'regular'
-                    WHEN u.post_count >= 10 THEN 'member'
+                    WHEN u.post_count >= {RANK_VETERAN_POSTS} THEN 'veteran'
+                    WHEN u.post_count >= {RANK_ACTIVE_POSTS} THEN 'active'
+                    WHEN u.post_count >= {RANK_REGULAR_POSTS} THEN 'regular'
+                    WHEN u.post_count >= {RANK_MEMBER_POSTS} THEN 'member'
                     ELSE 'newcomer'
                 END as user_rank,
                 ROUND(
                     CASE
                         WHEN (? - u.join_date) > 0
-                        THEN u.post_count / ((? - u.join_date) / 86400.0)
+                        THEN u.post_count / ((? - u.join_date) / {SECONDS_PER_DAY}.0)
                         ELSE 0
                     END, 2
                 ) as posts_per_day
@@ -358,8 +365,8 @@ class DatabaseManager:
             WHERE u.user_id = ?
             GROUP BY u.user_id
         """, (
-            timestamp() - 900,    # 15 minutes ago for online status
-            timestamp() - 3600,   # 1 hour ago for recently active
+            timestamp() - MINUTES_15,    # 15 minutes ago for online status
+            timestamp() - SECONDS_PER_HOUR,   # 1 hour ago for recently active
             timestamp(),          # current time for posts per day calculation
             timestamp(),          # current time for posts per day calculation
             user_id
@@ -376,12 +383,12 @@ class DatabaseManager:
             JOIN threads t ON p.thread_id = t.thread_id
             WHERE p.user_id = ? AND p.deleted = FALSE AND t.deleted = FALSE
             ORDER BY p.timestamp DESC
-            LIMIT 3
+            LIMIT {RECENT_POSTS_LIMIT}
         """, (user_id,))
 
         user_dict['recent_posts'] = [dict(post) for post in recent_posts]
 
-        days_since_join = max(1, (timestamp() - user_dict['join_date']) / 86400.0)
+        days_since_join = max(1, (timestamp() - user_dict['join_date']) / SECONDS_PER_DAY)
         user_dict['days_since_join'] = int(days_since_join)
 
         rank_descriptions = {
@@ -435,7 +442,7 @@ class DatabaseManager:
             )
 
     
-    @async_ttl_cache(ttl=600)  # Cache for 10 minutes (boards change rarely)
+    @async_ttl_cache(ttl=BOARD_CACHE_TTL)  # Cache for 10 minutes (boards change rarely)
     async def get_all_boards(self) -> List[Dict]:
         """Get all visible boards"""
         boards = await self.execute_query("SELECT * FROM board_summary ORDER BY name")
@@ -464,7 +471,7 @@ class DatabaseManager:
         return board_id
     
     
-    @async_ttl_cache(ttl=600)  # Cache for 10 minutes
+    @async_ttl_cache(ttl=BOARD_CACHE_TTL)  # Cache for 10 minutes
     async def get_board_by_id(self, board_id: int) -> Optional[Dict]:
         """Get board by ID"""
         board = await self.execute_query(
@@ -486,7 +493,7 @@ class DatabaseManager:
 
     
     
-    async def get_threads_by_board(self, board_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
+    async def get_threads_by_board(self, board_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE) -> List[Dict]:
         """Get threads in a board with pagination"""
         offset = (page - 1) * per_page
         threads = await self.execute_query("""
@@ -507,7 +514,7 @@ class DatabaseManager:
         return mapped_threads
     
     
-    @async_ttl_cache(ttl=180)  # Cache for 3 minutes (threads change more frequently)
+    @async_ttl_cache(ttl=THREAD_CACHE_TTL)  # Cache for 3 minutes (threads change more frequently)
     async def get_thread_by_id(self, thread_id: int) -> Optional[Dict]:
         """Get thread by ID"""
         thread = await self.execute_query("""
@@ -582,7 +589,7 @@ class DatabaseManager:
         )
 
     
-    async def get_posts_by_thread(self, thread_id: int, page: int = 1, per_page: int = 20) -> List[Dict]:
+    async def get_posts_by_thread(self, thread_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE) -> List[Dict]:
         """Get posts in a thread with pagination"""
         offset = (page - 1) * per_page
         posts = await self.execute_query("""
@@ -710,7 +717,7 @@ class DatabaseManager:
         return [dict(edit) for edit in edits]
 
     
-    async def search_forum_content(self, query: str, search_type: str = "all", page: int = 1, per_page: int = 20) -> Dict:
+    async def search_forum_content(self, query: str, search_type: str = "all", page: int = 1, per_page: int = DEFAULT_PAGE_SIZE) -> Dict:
         """Search across forum content"""
         offset = (page - 1) * per_page
         search_term = f"%{query}%"
@@ -766,7 +773,7 @@ class DatabaseManager:
             VALUES (?, ?, ?, ?, ?, ?)
         """, (moderator_id, target_type, target_id, action, reason, timestamp()))
     
-    async def get_moderation_log(self, page: int = 1, per_page: int = 50) -> List[Dict]:
+    async def get_moderation_log(self, page: int = 1, per_page: int = ADMIN_PAGE_SIZE) -> List[Dict]:
         """Get moderation log with pagination"""
         offset = (page - 1) * per_page
         logs = await self.execute_query("""
@@ -824,7 +831,7 @@ class DatabaseManager:
             FROM users 
             WHERE is_banned = FALSE
             ORDER BY post_count DESC 
-            LIMIT 5
+            LIMIT {TOP_BOARDS_LIMIT}
         """)
         stats["top_posters"] = [dict(poster) for poster in top_posters]
         

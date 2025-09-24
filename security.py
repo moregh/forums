@@ -5,13 +5,14 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status
 import jwt
 import time
+from config import ACCESS_TOKEN_EXPIRE_MINUTES, CSRF_TOKEN_BYTES, RATE_LIMIT_WINDOW_DEFAULT
 
 
 class SecurityManager:
     def __init__(self, secret_key: str):
         self.secret_key = secret_key
         self.algorithm = "HS256"
-        self.access_token_expire_minutes = 30
+        self.access_token_expire_minutes = ACCESS_TOKEN_EXPIRE_MINUTES
         
     def hash_password(self, password: str) -> tuple[str, str]:
         """Generate password hash and salt"""
@@ -48,7 +49,7 @@ class SecurityManager:
 
     def generate_csrf_token(self) -> str:
         """Generate a cryptographically secure CSRF token"""
-        return secrets.token_urlsafe(32)
+        return secrets.token_urlsafe(CSRF_TOKEN_BYTES)
 
     def verify_csrf_token(self, token: str, session_token: str) -> bool:
         """Verify CSRF token matches session token using constant-time comparison"""
@@ -61,7 +62,7 @@ class RateLimiter:
     def __init__(self, db_path: str):
         self.db_path = db_path
         
-    def check_rate_limit(self, identifier: str, action: str, limit: int, window_minutes: int = 60) -> bool:
+    def check_rate_limit(self, identifier: str, action: str, limit: int, window_minutes: int = RATE_LIMIT_WINDOW_DEFAULT) -> bool:
         """Check if action is within rate limits"""
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()

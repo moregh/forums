@@ -1,6 +1,9 @@
 from pydantic import BaseModel, EmailStr, validator
 from typing import Optional, Dict, Any, List
 import re
+from config import (USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH, PASSWORD_MIN_LENGTH,
+                   BOARD_NAME_MIN_LENGTH, BOARD_NAME_MAX_LENGTH, THREAD_TITLE_MIN_LENGTH,
+                   THREAD_TITLE_MAX_LENGTH, POST_CONTENT_MIN_LENGTH, POST_CONTENT_MAX_LENGTH)
 
 
 class UserRegister(BaseModel):
@@ -10,16 +13,16 @@ class UserRegister(BaseModel):
     
     @validator('username')
     def validate_username(cls, v):
-        if len(v) < 3 or len(v) > 50:
-            raise ValueError('Username must be 3-50 characters')
+        if len(v) < USERNAME_MIN_LENGTH or len(v) > USERNAME_MAX_LENGTH:
+            raise ValueError(f'Username must be {USERNAME_MIN_LENGTH}-{USERNAME_MAX_LENGTH} characters')
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError('Username can only contain letters, numbers, hyphens, and underscores')
         return v
     
     @validator('password')
     def validate_password(cls, v):
-        if len(v) < 10:
-            raise ValueError('Password must be at least 12 characters')
+        if len(v) < PASSWORD_MIN_LENGTH:
+            raise ValueError(f'Password must be at least {PASSWORD_MIN_LENGTH} characters')
         if not re.search(r'[A-Z]', v):
             raise ValueError('Password must contain at least one uppercase letter')
         if not re.search(r'[a-z]', v):
@@ -79,8 +82,8 @@ class BoardCreate(BaseModel):
     
     @validator('name')
     def validate_name(cls, v):
-        if len(v) < 2 or len(v) > 100:
-            raise ValueError('Board name must be 2-100 characters')
+        if len(v) < BOARD_NAME_MIN_LENGTH or len(v) > BOARD_NAME_MAX_LENGTH:
+            raise ValueError(f'Board name must be {BOARD_NAME_MIN_LENGTH}-{BOARD_NAME_MAX_LENGTH} characters')
         return v
 
 class BoardResponse(BaseModel):
@@ -100,14 +103,14 @@ class ThreadCreate(BaseModel):
     
     @validator('title')
     def validate_title(cls, v):
-        if len(v) < 3 or len(v) > 255:
-            raise ValueError('Thread title must be 3-255 characters')
+        if len(v) < THREAD_TITLE_MIN_LENGTH or len(v) > THREAD_TITLE_MAX_LENGTH:
+            raise ValueError(f'Thread title must be {THREAD_TITLE_MIN_LENGTH}-{THREAD_TITLE_MAX_LENGTH} characters')
         return v
     
     @validator('content')
     def validate_content(cls, v):
-        if len(v) < 1 or len(v) > 50000:
-            raise ValueError('Content must be 1-50000 characters')
+        if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
+            raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
         return v
 
 class PostCreate(BaseModel):
@@ -115,8 +118,8 @@ class PostCreate(BaseModel):
     
     @validator('content')
     def validate_content(cls, v):
-        if len(v) < 1 or len(v) > 50000:
-            raise ValueError('Content must be 1-50000 characters')
+        if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
+            raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
         return v
 
 class ThreadResponse(BaseModel):
@@ -153,8 +156,8 @@ class PostEdit(BaseModel):
     
     @validator('content')
     def validate_content(cls, v):
-        if len(v) < 1 or len(v) > 50000:
-            raise ValueError('Content must be 1-50000 characters')
+        if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
+            raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
         return v
 
 class PostEditHistory(BaseModel):
