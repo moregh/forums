@@ -213,6 +213,7 @@ async def check_rate_limit(identifier: str, action: str):
 async def validate_user_exists(user_id: int) -> dict:
     user = await db.get_user_by_id(user_id)
     if not user:
+
         raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
     return user
 

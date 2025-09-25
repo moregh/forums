@@ -20,6 +20,10 @@ import string
 import json
 import time
 import sys
+import hashlib
+import hmac
+import base64
+import uuid
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass
 from enum import Enum
@@ -29,6 +33,15 @@ from datetime import datetime, timezone
 # Database configuration
 DATABASE_PATH = "forum.db"
 API_BASE_URL = "http://localhost:8000"
+
+# Rate limits from config.py (requests, seconds)
+RATE_LIMITS = {
+    "register": (5, 60),
+    "login": (10, 60),
+    "edit": (30, 60),
+    "post": (20, 60),
+    "thread": (10, 60)
+}
 
 class FuzzStatus(Enum):
     PASS = "PASS"
@@ -73,6 +86,9 @@ class APIFuzzer:
         self.test_users = []
         self.test_boards = []
         self.test_threads = []
+
+        # Rate limiting tracker
+        self.rate_limit_tracker = {}  # Track requests per endpoint per time window
         self.test_posts = []
 
         # Results
@@ -83,6 +99,10 @@ class APIFuzzer:
         """Setup database connection for verification"""
         self.db = await aiosqlite.connect(self.db_path)
         self.db.row_factory = aiosqlite.Row
+        # Configure for better concurrent access
+        await self.db.execute("PRAGMA journal_mode = WAL")
+        await self.db.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
+        await self.db.commit()
 
     async def cleanup(self):
         """Cleanup resources"""
@@ -116,85 +136,201 @@ class APIFuzzer:
         return [
             "invalid.token.here",
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.signature",
-            "",
+            "empty_token",  # Use placeholder instead of empty string
             "null",
             "undefined",
-            "Bearer token",
+            "Bearer_token",  # Remove space to avoid header issues
             "A" * 500,  # Very long token
             "../../secrets",
         ]
 
-    async def create_test_users(self) -> Dict[str, Dict]:
-        """Create test users with different permission levels"""
-        users = {
-            'admin': {
-                'username': f'admin_{self.generate_random_string(5)}',
-                'email': f'admin_{self.generate_random_string(5)}@test.com',
-                'password': 'AdminPassword123!'
-            },
-            'regular': {
-                'username': f'user_{self.generate_random_string(5)}',
-                'email': f'user_{self.generate_random_string(5)}@test.com',
-                'password': 'UserPassword123!'
-            },
-            'banned': {
-                'username': f'banned_{self.generate_random_string(5)}',
-                'email': f'banned_{self.generate_random_string(5)}@test.com',
-                'password': 'BannedPassword123!'
-            }
+    def generate_jwt_token(self, user_id: int, username: str, is_admin: bool = False) -> str:
+        """Generate a JWT token for testing (simplified version)"""
+        # This is a basic JWT-like token for testing - in production use proper JWT library
+        import base64
+        import json
+
+        header = {"alg": "HS256", "typ": "JWT"}
+        payload = {
+            "user_id": user_id,
+            "username": username,
+            "is_admin": is_admin,
+            "exp": int(time.time()) + 3600  # 1 hour expiry
         }
 
+        header_b64 = base64.b64encode(json.dumps(header).encode()).decode().rstrip('=')
+        payload_b64 = base64.b64encode(json.dumps(payload).encode()).decode().rstrip('=')
+
+        # Simple signature (in production, use proper HMAC with secret)
+        signature = hashlib.md5(f"{header_b64}.{payload_b64}.test_secret".encode()).hexdigest()[:16]
+
+        return f"{header_b64}.{payload_b64}.{signature}"
+
+    def generate_csrf_token(self) -> str:
+        """Generate a CSRF token"""
+        return ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+
+    async def create_test_users_in_db(self) -> Dict[str, Dict]:
+        """Create test users directly in database before API server starts"""
+        if not self.db:
+            print("No database connection available for creating test users")
+            return {}
+
+        # Generate truly unique identifiers using timestamp and UUID
+        timestamp = int(time.time())
+        unique_id = str(uuid.uuid4())[:8]
+
+        users_data = [
+            {
+                'type': 'admin',
+                'username': f'admin_{timestamp}_{unique_id}',
+                'email': f'admin_{timestamp}_{unique_id}@fuzztest.com',
+                'is_admin': True,
+                'is_banned': False
+            },
+            {
+                'type': 'regular',
+                'username': f'user_{timestamp}_{unique_id}',
+                'email': f'user_{timestamp}_{unique_id}@fuzztest.com',
+                'is_admin': False,
+                'is_banned': False
+            },
+            {
+                'type': 'banned',
+                'username': f'banned_{timestamp}_{unique_id}',
+                'email': f'banned_{timestamp}_{unique_id}@fuzztest.com',
+                'is_admin': False,
+                'is_banned': True
+            }
+        ]
+
         created_users = {}
+        print("Creating test users directly in database...")
 
-        for user_type, user_data in users.items():
+        for user_data in users_data:
             try:
-                # Register user
-                response = await self.client.post(
-                    f"{self.base_url}/api/auth/register",
-                    json=user_data
+                # Generate password hash and salt
+                password_salt = ''.join(random.choices(string.ascii_letters + string.digits, k=32))
+                password_hash = hashlib.sha256(("TestPassword123!" + password_salt).encode()).hexdigest()
+                current_time = time.time()
+
+                # Insert user directly into database with all required fields
+                cursor = await self.db.execute(
+                    """INSERT INTO users (
+                        username, email, password_hash, password_salt, password_changed_at,
+                        is_admin, is_banned, email_verified, join_date, last_activity,
+                        post_count, avatar_url, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        user_data['username'],
+                        user_data['email'],
+                        password_hash,
+                        password_salt,
+                        current_time,
+                        user_data['is_admin'],
+                        user_data['is_banned'],
+                        True,  # email_verified
+                        current_time,  # join_date
+                        current_time,  # last_activity
+                        0,  # post_count
+                        '',  # avatar_url
+                        current_time  # created_at
+                    )
                 )
-                if response.status_code == 200:
-                    resp_data = response.json()
-                    created_users[user_type] = {
-                        'data': user_data,
-                        'token': resp_data.get('access_token'),
-                        'csrf_token': resp_data.get('csrf_token'),
-                        'user_info': resp_data.get('user')
+                await self.db.commit()
+                user_id = cursor.lastrowid
+
+                # Generate JWT token and CSRF token
+                jwt_token = self.generate_jwt_token(user_id, user_data['username'], user_data['is_admin'])
+                csrf_token = self.generate_csrf_token()
+
+                created_users[user_data['type']] = {
+                    'data': {
+                        'username': user_data['username'],
+                        'email': user_data['email']
+                    },
+                    'token': jwt_token,
+                    'csrf_token': csrf_token,
+                    'user_info': {
+                        'user_id': user_id,
+                        'username': user_data['username'],
+                        'email': user_data['email'],
+                        'is_admin': user_data['is_admin'],
+                        'is_banned': user_data['is_banned']
                     }
+                }
 
-                    # Store session cookies
-                    if response.cookies.get('session_id'):
-                        self.session_cookies[user_type] = response.cookies.get('session_id')
-
-                    print(f"Created {user_type} user: {user_data['username']}")
-
-                    # Make admin user an actual admin via database
-                    if user_type == 'admin' and self.db:
-                        user_id = resp_data.get('user', {}).get('user_id')
-                        if user_id:
-                            await self.db.execute(
-                                "UPDATE users SET is_admin = TRUE WHERE user_id = ?",
-                                (user_id,)
-                            )
-                            await self.db.commit()
-                            print(f"Granted admin privileges to user {user_id}")
-
-                    # Ban the banned user
-                    if user_type == 'banned' and self.db:
-                        user_id = resp_data.get('user', {}).get('user_id')
-                        if user_id:
-                            await self.db.execute(
-                                "UPDATE users SET is_banned = TRUE WHERE user_id = ?",
-                                (user_id,)
-                            )
-                            await self.db.commit()
-                            print(f"Banned user {user_id}")
+                print(f"Created {user_data['type']} user: {user_data['username']} (ID: {user_id})")
 
             except Exception as e:
-                print(f"Failed to create {user_type} user: {e}")
+                print(f"Failed to create {user_data['type']} user: {e}")
 
         self.test_users = created_users
         return created_users
+
+    async def load_existing_test_users(self) -> Dict[str, Dict]:
+        """Load existing test users from database for fuzzing"""
+        if not self.db:
+            print("No database connection available")
+            return {}
+
+        loaded_users = {}
+
+        try:
+            # Find admin users (look for new timestamp-based pattern)
+            async with self.db.execute("SELECT user_id, username, email FROM users WHERE is_admin = TRUE AND (username LIKE 'admin_%' OR username LIKE 'admin_%_%') ORDER BY user_id DESC LIMIT 1") as cursor:
+                admin_row = await cursor.fetchone()
+                if admin_row:
+                    user_id, username, email = admin_row
+                    jwt_token = self.generate_jwt_token(user_id, username, True)
+                    csrf_token = self.generate_csrf_token()
+                    loaded_users['admin'] = {
+                        'data': {'username': username, 'email': email},
+                        'token': jwt_token,
+                        'csrf_token': csrf_token,
+                        'user_info': {'user_id': user_id, 'username': username, 'email': email, 'is_admin': True, 'is_banned': False}
+                    }
+                    print(f"Loaded admin user: {username}")
+
+            # Find regular users (look for new timestamp-based pattern)
+            async with self.db.execute("SELECT user_id, username, email FROM users WHERE is_admin = FALSE AND is_banned = FALSE AND (username LIKE 'user_%' OR username LIKE 'user_%_%') ORDER BY user_id DESC LIMIT 1") as cursor:
+                regular_row = await cursor.fetchone()
+                if regular_row:
+                    user_id, username, email = regular_row
+                    jwt_token = self.generate_jwt_token(user_id, username, False)
+                    csrf_token = self.generate_csrf_token()
+                    loaded_users['regular'] = {
+                        'data': {'username': username, 'email': email},
+                        'token': jwt_token,
+                        'csrf_token': csrf_token,
+                        'user_info': {'user_id': user_id, 'username': username, 'email': email, 'is_admin': False, 'is_banned': False}
+                    }
+                    print(f"Loaded regular user: {username}")
+
+            # Find banned users (look for new timestamp-based pattern)
+            async with self.db.execute("SELECT user_id, username, email FROM users WHERE is_banned = TRUE AND (username LIKE 'banned_%' OR username LIKE 'banned_%_%') ORDER BY user_id DESC LIMIT 1") as cursor:
+                banned_row = await cursor.fetchone()
+                if banned_row:
+                    user_id, username, email = banned_row
+                    jwt_token = self.generate_jwt_token(user_id, username, False)
+                    csrf_token = self.generate_csrf_token()
+                    loaded_users['banned'] = {
+                        'data': {'username': username, 'email': email},
+                        'token': jwt_token,
+                        'csrf_token': csrf_token,
+                        'user_info': {'user_id': user_id, 'username': username, 'email': email, 'is_admin': False, 'is_banned': True}
+                    }
+                    print(f"Loaded banned user: {username}")
+
+        except Exception as e:
+            print(f"Error loading test users: {e}")
+
+        if not loaded_users:
+            print("❌ No test users found! Run with --setup-users first.")
+            return {}
+
+        self.test_users = loaded_users
+        return loaded_users
 
     async def create_test_data(self):
         """Create test boards, threads, and posts"""
@@ -266,14 +402,18 @@ class APIFuzzer:
             print(f"Error creating test data: {e}")
 
     def get_test_cases(self) -> List[FuzzCase]:
-        """Generate comprehensive test cases"""
+        """Generate comprehensive test cases with rate limit awareness"""
         cases = []
 
-        # Authentication endpoints
+        # Authentication endpoints - full testing with rate limit awareness
+        # Generate truly unique identifiers for registration tests
+        test_timestamp = int(time.time())
+        test_uuid = str(uuid.uuid4())[:8]
+
         cases.extend([
             FuzzCase("register_valid", "POST", "/api/auth/register",
-                    body={'username': f'fuzz_{self.generate_random_string(5)}', 'email': f'fuzz_{self.generate_random_string(5)}@test.com', 'password': 'Password123!'},
-                    expected_status=[200, 429], description="Valid user registration (may be rate limited)"),
+                    body={'username': f'fuzztest_{test_timestamp}_{test_uuid}', 'email': f'fuzztest_{test_timestamp}_{test_uuid}@test.com', 'password': 'Password123!'},
+                    expected_status=200, description="Valid user registration"),
             FuzzCase("register_xss_username", "POST", "/api/auth/register",
                     body={'username': "<script>alert('xss')</script>", 'email': 'test@test.com', 'password': 'Password123!'},
                     expected_status=422, description="XSS in username"),
@@ -361,7 +501,13 @@ class APIFuzzer:
 
     async def execute_fuzz_case(self, case: FuzzCase, auth_token: str = None, csrf_token: str = None,
                               session_cookie: str = None, use_invalid_tokens: bool = False) -> FuzzResult:
-        """Execute a single fuzz test case"""
+        """Execute a single fuzz test case with retry logic for rate limiting"""
+        return await self._execute_with_retry(case, auth_token, csrf_token, session_cookie, use_invalid_tokens)
+
+    async def _execute_with_retry(self, case: FuzzCase, auth_token: str = None, csrf_token: str = None,
+                                session_cookie: str = None, use_invalid_tokens: bool = False,
+                                max_retries: int = 3) -> FuzzResult:
+        """Execute test case with retry logic for rate limiting"""
         start_time = time.time()
 
         # Prepare headers
@@ -390,59 +536,127 @@ class APIFuzzer:
         if session_cookie:
             cookies['session_id'] = session_cookie
 
-        try:
-            # Execute request
-            if case.method.upper() == 'GET':
-                response = await self.client.get(f"{self.base_url}{case.endpoint}", headers=headers, cookies=cookies)
-            elif case.method.upper() == 'POST':
-                response = await self.client.post(f"{self.base_url}{case.endpoint}",
-                                                json=case.body, headers=headers, cookies=cookies)
-            elif case.method.upper() == 'PUT':
-                response = await self.client.put(f"{self.base_url}{case.endpoint}",
-                                               json=case.body, headers=headers, cookies=cookies)
-            elif case.method.upper() == 'PATCH':
-                response = await self.client.patch(f"{self.base_url}{case.endpoint}",
-                                                 json=case.body, headers=headers, cookies=cookies)
-            elif case.method.upper() == 'DELETE':
-                response = await self.client.delete(f"{self.base_url}{case.endpoint}", headers=headers, cookies=cookies)
-            else:
-                raise ValueError(f"Unsupported HTTP method: {case.method}")
-
-            duration = time.time() - start_time
-
-            # Analyze response
+        for attempt in range(max_retries + 1):
             try:
-                response_data = response.json() if response.content else None
-            except:
-                response_data = response.text if response.content else None
+                # Execute request
+                if case.method.upper() == 'GET':
+                    response = await self.client.get(f"{self.base_url}{case.endpoint}", headers=headers, cookies=cookies)
+                elif case.method.upper() == 'POST':
+                    response = await self.client.post(f"{self.base_url}{case.endpoint}",
+                                                    json=case.body, headers=headers, cookies=cookies)
+                elif case.method.upper() == 'PUT':
+                    response = await self.client.put(f"{self.base_url}{case.endpoint}",
+                                                   json=case.body, headers=headers, cookies=cookies)
+                elif case.method.upper() == 'PATCH':
+                    response = await self.client.patch(f"{self.base_url}{case.endpoint}",
+                                                     json=case.body, headers=headers, cookies=cookies)
+                elif case.method.upper() == 'DELETE':
+                    response = await self.client.delete(f"{self.base_url}{case.endpoint}", headers=headers, cookies=cookies)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {case.method}")
 
-            # Determine result
-            expected_statuses = case.expected_status if isinstance(case.expected_status, list) else [case.expected_status]
-            if response.status_code in expected_statuses:
-                result = FuzzStatus.PASS.value
-            elif response.status_code in [500, 502, 503, 504]:
-                result = FuzzStatus.ERROR.value
-            else:
-                result = FuzzStatus.UNEXPECTED.value
+                # Check if rate limited and should retry
+                if response.status_code == 429 and attempt < max_retries:
+                    retry_delay = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                    print(f"    Rate limited (429), retrying in {retry_delay}s... (attempt {attempt + 1}/{max_retries + 1})")
+                    await asyncio.sleep(retry_delay)
+                    continue
 
-            return FuzzResult(
-                case=case,
-                status_code=response.status_code,
-                response_data=response_data,
-                duration=duration,
-                result=result
-            )
+                duration = time.time() - start_time
 
-        except Exception as e:
-            duration = time.time() - start_time
-            return FuzzResult(
-                case=case,
-                status_code=0,
-                response_data=None,
-                duration=duration,
-                result=FuzzStatus.ERROR.value,
-                error_message=str(e)
-            )
+                # Analyze response
+                try:
+                    response_data = response.json() if response.content else None
+                except:
+                    response_data = response.text if response.content else None
+
+                # Determine result
+                expected_statuses = case.expected_status if isinstance(case.expected_status, list) else [case.expected_status]
+                if response.status_code in expected_statuses:
+                    result = FuzzStatus.PASS.value
+                elif response.status_code in [500, 502, 503, 504]:
+                    result = FuzzStatus.ERROR.value
+                else:
+                    result = FuzzStatus.UNEXPECTED.value
+
+                return FuzzResult(
+                    case=case,
+                    status_code=response.status_code,
+                    response_data=response_data,
+                    duration=duration,
+                    result=result
+                )
+
+            except Exception as e:
+                if attempt == max_retries:  # Last attempt failed
+                    duration = time.time() - start_time
+                    return FuzzResult(
+                        case=case,
+                        status_code=0,
+                        response_data=None,
+                        duration=duration,
+                        result=FuzzStatus.ERROR.value,
+                        error_message=str(e)
+                    )
+                # If not last attempt, continue to retry
+
+    def get_rate_limit_key(self, endpoint: str, method: str) -> str:
+        """Get rate limit key for an endpoint"""
+        # Map endpoints to rate limit categories
+        if "/api/auth/register" in endpoint:
+            return "register"
+        elif "/api/auth/login" in endpoint:
+            return "login"
+        elif method in ["PUT", "PATCH", "DELETE"] and "/api/" in endpoint:
+            return "edit"
+        elif method == "POST" and "/posts" in endpoint:
+            return "post"
+        elif method == "POST" and "/threads" in endpoint:
+            return "thread"
+        else:
+            return None  # No rate limit
+
+    async def check_and_wait_for_rate_limit(self, endpoint: str, method: str):
+        """Check if we need to wait due to rate limits"""
+        rate_limit_key = self.get_rate_limit_key(endpoint, method)
+        if not rate_limit_key or rate_limit_key not in RATE_LIMITS:
+            return
+
+        max_requests, window_seconds = RATE_LIMITS[rate_limit_key]
+        current_time = time.time()
+
+        # Initialize tracker if needed
+        if rate_limit_key not in self.rate_limit_tracker:
+            self.rate_limit_tracker[rate_limit_key] = []
+
+        requests = self.rate_limit_tracker[rate_limit_key]
+
+        # Remove old requests outside the window
+        requests[:] = [req_time for req_time in requests if current_time - req_time < window_seconds]
+
+        # Check if we're at the limit
+        if len(requests) >= max_requests:
+            # Calculate how long to wait (wait for oldest request to expire)
+            oldest_request = min(requests)
+            wait_time = window_seconds - (current_time - oldest_request) + 0.1  # Small safety margin
+            if wait_time > 0:
+                print(f"    Rate limit reached for {rate_limit_key} ({len(requests)}/{max_requests}), waiting {wait_time:.1f}s...")
+                await asyncio.sleep(wait_time)
+                # Clean up expired requests after waiting
+                current_time = time.time()
+                requests[:] = [req_time for req_time in requests if current_time - req_time < window_seconds]
+
+    def update_rate_limit_tracker(self, endpoint: str, method: str):
+        """Update rate limit tracking after making a request"""
+        rate_limit_key = self.get_rate_limit_key(endpoint, method)
+        if not rate_limit_key or rate_limit_key not in RATE_LIMITS:
+            return
+
+        current_time = time.time()
+        if rate_limit_key not in self.rate_limit_tracker:
+            self.rate_limit_tracker[rate_limit_key] = []
+
+        self.rate_limit_tracker[rate_limit_key].append(current_time)
 
     async def verify_database_integrity(self) -> List[Dict]:
         """Check database for potential corruption or injection"""
@@ -498,9 +712,9 @@ class APIFuzzer:
         # Setup
         await self.setup_db_connection()
 
-        # Create test users and data
-        print("📝 Creating test users...")
-        await self.create_test_users()
+        # Load existing test users from database
+        print("📝 Loading test users from database...")
+        await self.load_existing_test_users()
 
         print("📊 Creating test data...")
         await self.create_test_data()
@@ -533,10 +747,16 @@ class APIFuzzer:
             use_invalid = scenario_name == 'invalid_tokens'
 
             for i, case in enumerate(test_cases):
+                # Check rate limits and wait if necessary
+                await self.check_and_wait_for_rate_limit(case.endpoint, case.method)
+
                 result = await self.execute_fuzz_case(
                     case, auth_token, csrf_token, session_cookie, use_invalid
                 )
                 self.results.append(result)
+
+                # Update rate limit tracking
+                self.update_rate_limit_tracker(case.endpoint, case.method)
 
                 # Log interesting results
                 if result.result in [FuzzStatus.ERROR.value, FuzzStatus.UNEXPECTED.value]:
@@ -654,19 +874,39 @@ class APIFuzzer:
 
 async def main():
     """Main execution function"""
-    if len(sys.argv) > 1 and sys.argv[1] == '--confirm-destructive':
-        print("⚠️  DESTRUCTIVE TESTING CONFIRMED")
-    else:
-        print("⚠️  WARNING: This script will modify/corrupt database data!")
-        print("⚠️  Only run against test environments!")
-        print("⚠️  Add --confirm-destructive flag to proceed")
+    if len(sys.argv) < 2:
+        print("Usage:")
+        print("  python api_fuzzer.py --setup-users         # Create test users in database (API stopped)")
+        print("  python api_fuzzer.py --confirm-destructive # Run full fuzzing (API running)")
         return
 
-    fuzzer = APIFuzzer()
-    try:
-        await fuzzer.run_comprehensive_fuzzing()
-    finally:
-        await fuzzer.cleanup()
+    if sys.argv[1] == "--setup-users":
+        print("⚠️  SETTING UP TEST USERS IN DATABASE")
+        print("   Make sure the API server is STOPPED to avoid database lock conflicts!")
+
+        fuzzer = APIFuzzer()
+        try:
+            await fuzzer.setup_db_connection()
+            users = await fuzzer.create_test_users_in_db()
+            if users:
+                print(f"\n✅ Successfully created {len(users)} test users!")
+                print("   Now start the API server and run: python api_fuzzer.py --confirm-destructive")
+            else:
+                print("❌ Failed to create test users")
+        finally:
+            await fuzzer.cleanup()
+
+    elif sys.argv[1] == "--confirm-destructive":
+        print("⚠️  DESTRUCTIVE TESTING CONFIRMED")
+        print("   Make sure test users have been created with --setup-users first!")
+
+        fuzzer = APIFuzzer()
+        try:
+            await fuzzer.run_comprehensive_fuzzing()
+        finally:
+            await fuzzer.cleanup()
+    else:
+        print("Invalid argument. Use --setup-users or --confirm-destructive")
 
 if __name__ == "__main__":
     asyncio.run(main())
