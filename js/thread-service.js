@@ -1,7 +1,8 @@
 class ThreadService {
-    constructor(api, notifications) {
+    constructor(api, notifications, boardService = null) {
         this.api = api;
         this.notifications = notifications;
+        this.boardService = boardService;
     }
 
     async getThread(threadId, page = 1) {
@@ -15,7 +16,18 @@ class ThreadService {
                 throw new Error('Thread not found');
             }
 
-            const sanitizedThreadInfo = this.sanitizeThreadInfo(threadInfo, threadId);
+            let sanitizedThreadInfo = this.sanitizeThreadInfo(threadInfo, threadId);
+
+            // If board name is missing and we have board service, try to fetch it
+            if ((!sanitizedThreadInfo.board_name || sanitizedThreadInfo.board_name === 'Unknown Board') &&
+                this.boardService && sanitizedThreadInfo.board_id) {
+                try {
+                    const board = await this.boardService.getBoard(sanitizedThreadInfo.board_id);
+                    sanitizedThreadInfo.board_name = board.name || 'Unknown Board';
+                } catch (error) {
+                    console.warn('Failed to fetch board name for thread:', error);
+                }
+            }
             const sanitizedPosts = Array.isArray(posts) ? posts : [];
 
             return {

@@ -10,7 +10,7 @@ class ForumApp {
         this.navigationManager = new NavigationManager(this.router, this.state, this.notifications);
         
         this.boardService = new BoardService(this.api, this.notifications);
-        this.threadService = new ThreadService(this.api, this.notifications);
+        this.threadService = new ThreadService(this.api, this.notifications, this.boardService);
         this.postService = new PostService(this.api, this.notifications);
         this.adminService = new AdminService(this.api, this.notifications);
         this.userService = new UserService(this.api, this.modalManager, this.notifications);
