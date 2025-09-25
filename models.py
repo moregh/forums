@@ -194,4 +194,78 @@ class PublicUserInfo(BaseModel):
     days_since_join: int
     rank_description: str
 
+class UserProfileUpdate(BaseModel):
+    avatar_url: Optional[str] = None
+    email: Optional[EmailStr] = None
+    is_banned: Optional[bool] = None
+
+    @validator('avatar_url')
+    def validate_avatar_url(cls, v):
+        if v is not None and len(v) > 500:
+            raise ValueError('Avatar URL must be less than 500 characters')
+        return v
+
+class UserPreferencesUpdate(BaseModel):
+    email_notifications: Optional[bool] = None
+    theme: Optional[str] = None
+    timezone: Optional[str] = None
+    posts_per_page: Optional[int] = None
+    signature: Optional[str] = None
+    show_avatars: Optional[bool] = None
+    show_signatures: Optional[bool] = None
+
+    @validator('theme')
+    def validate_theme(cls, v):
+        if v is not None and v not in ['light', 'dark', 'auto']:
+            raise ValueError('Theme must be light, dark, or auto')
+        return v
+
+    @validator('posts_per_page')
+    def validate_posts_per_page(cls, v):
+        if v is not None and (v < 5 or v > 100):
+            raise ValueError('Posts per page must be between 5 and 100')
+        return v
+
+    @validator('signature')
+    def validate_signature(cls, v):
+        if v is not None and len(v) > 500:
+            raise ValueError('Signature must be less than 500 characters')
+        return v
+
+class UserBan(BaseModel):
+    reason: Optional[str] = None
+    duration: Optional[int] = None  # Duration in days, None for permanent
+
+    @validator('reason')
+    def validate_reason(cls, v):
+        if v is not None and len(v) > 1000:
+            raise ValueError('Ban reason must be less than 1000 characters')
+        return v
+
+    @validator('duration')
+    def validate_duration(cls, v):
+        if v is not None and (v < 1 or v > 3650):  # Max 10 years
+            raise ValueError('Ban duration must be between 1 and 3650 days')
+        return v
+
+class ThreadLockUpdate(BaseModel):
+    locked: bool
+    reason: Optional[str] = None
+
+    @validator('reason')
+    def validate_reason(cls, v):
+        if v is not None and len(v) > 500:
+            raise ValueError('Lock reason must be less than 500 characters')
+        return v
+
+class ThreadStickyUpdate(BaseModel):
+    sticky: bool
+    reason: Optional[str] = None
+
+    @validator('reason')
+    def validate_reason(cls, v):
+        if v is not None and len(v) > 500:
+            raise ValueError('Sticky reason must be less than 500 characters')
+        return v
+
 

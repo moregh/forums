@@ -14,6 +14,7 @@ from database import DatabaseManager
 from exceptions import Exceptions
 from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardResponse
 from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo, PublicUserInfo
+from models import UserProfileUpdate, UserPreferencesUpdate, UserBan, ThreadLockUpdate, ThreadStickyUpdate
 from security import SecurityManager
 from functools import wraps, lru_cache
 from utils import timestamp
@@ -334,15 +335,26 @@ async def get_user(user_id: int, _: dict = Depends(get_current_user)):
     return UserResponse(**user)
 
 @app.put("/api/users/{user_id}", response_model=UserResponse)
-async def update_user_profile(user_id: int, update_data: dict, current_user: dict = Depends(verify_csrf_token)):
+async def update_user_profile(user_id: int, update_data: UserProfileUpdate, current_user: dict = Depends(verify_csrf_token)):
     await validate_user_exists(user_id)
     validate_user_permissions(user_id, current_user)
     
-    allowed_fields = ["avatar_url"]
+    # Build updates from validated model
+    filtered_updates = {}
+
+    # User can always update avatar
+    if update_data.avatar_url is not None:
+        filtered_updates["avatar_url"] = update_data.avatar_url
+
+    # Admin-only fields
     if current_user.get("is_admin"):
-        allowed_fields.extend(["email", "is_banned"])
-    
-    filtered_updates = {k: v for k, v in update_data.items() if k in allowed_fields}
+        if update_data.email is not None:
+            filtered_updates["email"] = str(update_data.email)
+        if update_data.is_banned is not None:
+            filtered_updates["is_banned"] = update_data.is_banned
+    elif update_data.email is not None or update_data.is_banned is not None:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Insufficient permissions for requested fields")
+
     if not filtered_updates:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "No valid fields to update")
     
@@ -397,11 +409,15 @@ async def get_user_preferences(user_id: int, current_user: dict = Depends(get_cu
     return preferences
 
 @app.put("/api/users/{user_id}/preferences")
-async def update_user_preferences(user_id: int, preferences_data: dict, current_user: dict = Depends(verify_csrf_token)):
+async def update_user_preferences(user_id: int, preferences_data: UserPreferencesUpdate, current_user: dict = Depends(verify_csrf_token)):
     validate_user_permissions(user_id, current_user, allow_self=True)
     
-    allowed_fields = ["email_notifications", "theme", "timezone", "posts_per_page", "signature", "show_avatars", "show_signatures"]
-    filtered_prefs = {k: v for k, v in preferences_data.items() if k in allowed_fields}
+    # Build updates from validated model
+    filtered_prefs = {}
+    for field in ["email_notifications", "theme", "timezone", "posts_per_page", "signature", "show_avatars", "show_signatures"]:
+        value = getattr(preferences_data, field)
+        if value is not None:
+            filtered_prefs[field] = value
     
     await db.update_user_preferences(user_id, filtered_prefs)
     return await db.get_user_preferences(user_id)
@@ -412,12 +428,12 @@ async def get_all_users(page: int = 1, per_page: int = DEFAULT_PAGE_SIZE, curren
 
 @app.post("/api/admin/users/{user_id}/ban")
 @audit_action("user_banned")
-async def ban_user(user_id: int, ban_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
+async def ban_user(user_id: int, ban_data: UserBan, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     user = await validate_user_exists(user_id)
     validate_admin_action(user, current_user, "ban")
     
     await db.ban_user(user_id)
-    await db.log_moderation_action(current_user["user_id"], "user", user_id, "ban", ban_data.get("reason", "No reason provided"))
+    await db.log_moderation_action(current_user["user_id"], "user", user_id, "ban", ban_data.reason or "No reason provided")
     return {"message": "User banned successfully"}
 
 @app.post("/api/admin/users/{user_id}/unban")
@@ -505,24 +521,24 @@ async def delete_thread(thread_id: int, request: Request, current_user: dict = D
 
 @app.patch("/api/threads/{thread_id}/lock")
 @audit_action("thread_locked", "thread")
-async def toggle_thread_lock(thread_id: int, lock_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
+async def toggle_thread_lock(thread_id: int, lock_data: ThreadLockUpdate, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     if not await db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
-    locked = lock_data.get("locked", True)
+    locked = lock_data.locked
     await db.update_thread_lock_status(thread_id, locked)
-    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "lock" if locked else "unlock")
+    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "lock" if locked else "unlock", lock_data.reason)
     return {"message": f"Thread {'locked' if locked else 'unlocked'} successfully"}
 
 @app.patch("/api/threads/{thread_id}/sticky")
 @audit_action("thread_stickied", "thread")
-async def toggle_thread_sticky(thread_id: int, sticky_data: dict, request: Request, current_user: dict = Depends(verify_csrf_admin)):
+async def toggle_thread_sticky(thread_id: int, sticky_data: ThreadStickyUpdate, request: Request, current_user: dict = Depends(verify_csrf_admin)):
     if not await db.thread_exists_and_accessible(thread_id):
         raise Exceptions.NOT_FOUND
     
-    sticky = sticky_data.get("sticky", True)
+    sticky = sticky_data.sticky
     await db.update_thread_sticky_status(thread_id, sticky)
-    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "sticky" if sticky else "unsticky")
+    await db.log_moderation_action(current_user["user_id"], "thread", thread_id, "sticky" if sticky else "unsticky", sticky_data.reason)
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
 @app.get("/api/threads/{thread_id}/posts", response_model=List[PostResponse])
