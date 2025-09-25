@@ -43,7 +43,7 @@ class BoardController {
             ]);
             
             const user = this.state.getState().user;
-            const totalThreads = board.thread_count || 25;
+            const totalThreads = board.thread_count || 0;
             const totalPages = Math.ceil(totalThreads / 20);
 
             const content = document.getElementById('content');
