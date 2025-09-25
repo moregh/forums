@@ -328,7 +328,7 @@ async def refresh_token(request: Request, current_user: dict = Depends(get_curre
     )
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
-async def get_user(user_id: int):
+async def get_user(user_id: int, _: dict = Depends(get_current_user)):
     user = await validate_user_exists(user_id)
     return UserResponse(**user)
 
