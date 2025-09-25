@@ -12,7 +12,7 @@ from config import (DEFAULT_CACHE_TTL, CACHE_CLEANUP_INTERVAL, CACHE_EXPIRE_TIME
                    RANK_VETERAN_POSTS, RANK_ACTIVE_POSTS, RANK_REGULAR_POSTS, RANK_MEMBER_POSTS,
                    SECONDS_PER_DAY, ONLINE_STATUS_MINUTES, RECENT_ACTIVITY_HOURS,
                    RATE_LIMIT_WINDOW_DEFAULT, SESSION_EXPIRE_HOURS, SESSION_TOKEN_BYTES,
-                   FAILED_LOGIN_RESET, MINUTES_15, SECONDS_PER_HOUR)
+                   FAILED_LOGIN_RESET, MINUTES_15, SECONDS_PER_HOUR, TOP_BOARDS_LIMIT)
 
 
 def timestamp() -> float:
@@ -327,7 +327,7 @@ class DatabaseManager:
     
     async def get_user_info(self, user_id: int) -> Optional[Dict]:
         """Get user info with statistics for display in info cards"""
-        user = await self.execute_query(f"""
+        user = await self.execute_query("""
             SELECT
                 u.user_id,
                 u.username,
@@ -346,16 +346,16 @@ class DatabaseManager:
                     ELSE 'offline'
                 END as activity_status,
                 CASE
-                    WHEN u.post_count >= {RANK_VETERAN_POSTS} THEN 'veteran'
-                    WHEN u.post_count >= {RANK_ACTIVE_POSTS} THEN 'active'
-                    WHEN u.post_count >= {RANK_REGULAR_POSTS} THEN 'regular'
-                    WHEN u.post_count >= {RANK_MEMBER_POSTS} THEN 'member'
+                    WHEN u.post_count >= ? THEN 'veteran'
+                    WHEN u.post_count >= ? THEN 'active'
+                    WHEN u.post_count >= ? THEN 'regular'
+                    WHEN u.post_count >= ? THEN 'member'
                     ELSE 'newcomer'
                 END as user_rank,
                 ROUND(
                     CASE
                         WHEN (? - u.join_date) > 0
-                        THEN u.post_count / ((? - u.join_date) / {SECONDS_PER_DAY}.0)
+                        THEN u.post_count / ((? - u.join_date) / ?)
                         ELSE 0
                     END, 2
                 ) as posts_per_day
@@ -367,8 +367,13 @@ class DatabaseManager:
         """, (
             timestamp() - MINUTES_15,    # 15 minutes ago for online status
             timestamp() - SECONDS_PER_HOUR,   # 1 hour ago for recently active
-            timestamp(),          # current time for posts per day calculation
-            timestamp(),          # current time for posts per day calculation
+            RANK_VETERAN_POSTS,       # veteran rank threshold
+            RANK_ACTIVE_POSTS,        # active rank threshold
+            RANK_REGULAR_POSTS,       # regular rank threshold
+            RANK_MEMBER_POSTS,        # member rank threshold
+            timestamp(),              # current time for posts per day calculation
+            timestamp(),              # current time for posts per day calculation
+            SECONDS_PER_DAY,          # seconds per day for posts per day calculation
             user_id
         ), fetch_one=True)
 
@@ -383,8 +388,8 @@ class DatabaseManager:
             JOIN threads t ON p.thread_id = t.thread_id
             WHERE p.user_id = ? AND p.deleted = FALSE AND t.deleted = FALSE
             ORDER BY p.timestamp DESC
-            LIMIT {RECENT_POSTS_LIMIT}
-        """, (user_id,))
+            LIMIT ?
+        """, (user_id, RECENT_POSTS_LIMIT))
 
         user_dict['recent_posts'] = [dict(post) for post in recent_posts]
 
@@ -827,12 +832,12 @@ class DatabaseManager:
         stats["posts_today"] = result["count"]
         
         top_posters = await self.execute_query("""
-            SELECT username, post_count 
-            FROM users 
+            SELECT username, post_count
+            FROM users
             WHERE is_banned = FALSE
-            ORDER BY post_count DESC 
-            LIMIT {TOP_BOARDS_LIMIT}
-        """)
+            ORDER BY post_count DESC
+            LIMIT ?
+        """, (TOP_BOARDS_LIMIT,))
         stats["top_posters"] = [dict(poster) for poster in top_posters]
         
         return stats
