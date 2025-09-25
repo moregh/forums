@@ -60,7 +60,7 @@ class ForumAPI {
             
             if (response.status === ForumConfig.httpStatus.unauthorized) {
                 this.clearAuth();
-                if (window.forum) {
+                if (window.forum && typeof window.forum.handleAuthError === 'function') {
                     window.forum.handleAuthError();
                 }
                 return null;

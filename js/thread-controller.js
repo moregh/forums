@@ -381,7 +381,7 @@ class ThreadController {
             
             this.modalManager.createFormModal(
                 'Reply with Quote',
-                `<textarea name="content" rows="8" required>${quoteText}</textarea>`,
+                `<textarea name="content" rows="8" required>${UIComponents.escapeHtml(quoteText)}</textarea>`,
                 async (formData) => {
                     await this.createPost(currentThread.thread_id, formData.content);
                 },
