@@ -16,6 +16,7 @@ class NotificationManager {
             pointer-events: none;
         `;
         document.body.appendChild(container);
+        this.setupEventHandlers(container);
         return container;
     }
 
@@ -119,21 +120,21 @@ class NotificationManager {
         let content = '';
 
         if (icon) {
-            content += `<div class="notification-icon">${icon}</div>`;
+            content += `<div class="notification-icon">${UIComponents.escapeHtml(icon)}</div>`;
         }
 
         content += '<div class="notification-content">';
         
         if (title) {
-            content += `<div class="notification-title">${title}</div>`;
+            content += `<div class="notification-title">${UIComponents.escapeHtml(title)}</div>`;
         }
         
-        content += `<div class="notification-message">${message}</div>`;
+        content += `<div class="notification-message">${UIComponents.escapeHtml(message)}</div>`;
 
         if (actions.length > 0) {
             content += '<div class="notification-actions">';
             actions.forEach(action => {
-                content += `<button class="notification-btn" onclick="${action.callback}">${UIComponents.escapeHtml(action.text)}</button>`;
+                content += `<button class="notification-btn" data-callback="${UIComponents.escapeHtml(action.callback)}">${UIComponents.escapeHtml(action.text)}</button>`;
             });
             content += '</div>';
         }
@@ -141,7 +142,7 @@ class NotificationManager {
         content += '</div>';
 
         if (type !== 'loading') {
-            content += `<button class="notification-close" onclick="notificationManager.hide('${id}')">&times;</button>`;
+            content += `<button class="notification-close" data-notification-id="${id}">&times;</button>`;
         }
 
         notification.innerHTML = content;
@@ -158,6 +159,30 @@ class NotificationManager {
             loading: 'background: linear-gradient(135deg, #95a5a6, #7f8c8d); color: white;'
         };
         return styles[type] || styles.info;
+    }
+
+    setupEventHandlers(container) {
+        container.addEventListener('click', (e) => {
+            if (e.target.classList.contains('notification-close')) {
+                const notificationId = e.target.getAttribute('data-notification-id');
+                if (notificationId) {
+                    this.hide(notificationId);
+                }
+            } else if (e.target.classList.contains('notification-btn')) {
+                const callback = e.target.getAttribute('data-callback');
+                if (callback) {
+                    try {
+                        // Safely evaluate the callback
+                        const func = new Function('return ' + callback)();
+                        if (typeof func === 'function') {
+                            func();
+                        }
+                    } catch (error) {
+                        console.error('Notification callback error:', error);
+                    }
+                }
+            }
+        });
     }
 
     getDefaultDuration(type) {

@@ -78,7 +78,7 @@ class UserService {
                         </h4>
                         <div class="user-rank ${rankClass}">
                             <span class="rank-icon">★</span>
-                            ${userInfo.rank_description}
+                            ${UIComponents.escapeHtml(userInfo.rank_description)}
                         </div>
                         <div class="activity-status ${activityStatusClass}">
                             <span class="status-indicator"></span>
