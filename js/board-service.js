@@ -26,18 +26,14 @@ class BoardService {
 
     async getBoard(boardId) {
         try {
-            console.log('Looking for board ID:', boardId, 'type:', typeof boardId);
-
             // First try to find in cached boards
             const boards = await this.getBoards();
-            console.log('Available boards:', boards.map(b => ({ id: b.board_id, name: b.name })));
+            ('Available boards:', boards.map(b => ({ id: b.board_id, name: b.name })));
             let board = boards.find(b => b.board_id == boardId);
 
             // If not found, force refresh cache and try again
             if (!board) {
-                console.log('Board not found in cache, refreshing...');
                 const refreshedBoards = await this.getBoards(true);
-                console.log('Refreshed boards:', refreshedBoards.map(b => ({ id: b.board_id, name: b.name })));
                 board = refreshedBoards.find(b => b.board_id == boardId);
             }
 
@@ -45,8 +41,6 @@ class BoardService {
                 console.error('Board still not found after refresh');
                 throw new Error('Board not found');
             }
-
-            console.log('Found board:', board.name);
             return board;
         } catch (error) {
             console.error('getBoard error:', error);
