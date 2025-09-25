@@ -221,6 +221,35 @@ input:focus,textarea:focus{outline:none;border-color:var(--input-focus)}
     white-space: nowrap;
 }
 
+.back-link {
+    color: var(--primary);
+    text-decoration: none;
+    padding: 0.5rem 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.back-link:hover {
+    color: var(--primary-dark);
+    background: rgba(52, 152, 219, 0.1);
+    border-color: var(--primary);
+    text-decoration: none;
+}
+
+.back-link:visited {
+    color: var(--primary);
+}
+
+.back-link:visited:hover {
+    color: var(--primary-dark);
+}
+
 .admin-header h1{font-size:2.5rem;color:#e0e0e0;margin-bottom:1rem;font-weight:300}
 .admin-nav-tabs{display:flex;gap:.5rem;padding:.5rem;background:var(--card-bg);border-radius:12px;border:1px solid var(--border)}
 .admin-tab{display:flex;align-items:center;gap:.5rem;padding:.75rem 1rem;background:none;border:none;border-radius:8px;color:var(--muted);cursor:pointer;transition:all .2s;font-size:.9rem}

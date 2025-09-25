@@ -127,9 +127,9 @@ const Templates = {
                         </div>
                     </div>
                     <div class="page-actions">
-                        <button onclick="forum.router.navigate('/boards/${safeThreadInfo.board_id}')" class="btn-secondary">
+                        <a href="/boards/${safeThreadInfo.board_id}" onclick="forum.router.navigate('/boards/${safeThreadInfo.board_id}'); return false;" class="back-link">
                             ← Back to ${UIComponents.escapeHtml(safeThreadInfo.board_name)}
-                        </button>
+                        </a>
                         ${currentUser && !safeThreadInfo.locked ? `<button onclick="forum.showReplyForm(${safeThreadInfo.thread_id})" class="btn-primary">Reply</button>` : ''}
                         ${UIComponents.canModerateThread(currentUser) ? `
                             <div class="admin-actions">

@@ -76,9 +76,9 @@ class ThreadController {
                     </div>
                 </div>
                 <div class="page-actions">
-                    <button onclick="threadController.router.navigate('/boards/${thread.board_id}')" class="btn-secondary">
+                    <a href="/boards/${thread.board_id}" onclick="threadController.router.navigate('/boards/${thread.board_id}'); return false;" class="back-link">
                         ← Back to ${UIComponents.escapeHtml(thread.board_name)}
-                    </button>
+                    </a>
                     ${user && !thread.locked ? `<button onclick="threadController.showReplyForm(${thread.thread_id})" class="btn-primary">Reply</button>` : ''}
                     ${this.canUserModerateThread(thread, user) ? this.renderModeratorActions(thread) : ''}
                 </div>

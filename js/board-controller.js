@@ -115,7 +115,7 @@ class BoardController {
                     </div>
                 </div>
                 <div class="page-actions">
-                    <button onclick="boardController.router.navigate('/')" class="btn-secondary">← Back to Forums</button>
+                    <a href="/" onclick="boardController.router.navigate('/'); return false;" class="back-link">← Back to Forums</a>
                     ${user && !this.isThreadCreationDisabled(board) ? 
                         `<button onclick="boardController.showCreateThreadForm(${board.board_id})" class="btn-primary">New Thread</button>` : ''}
                 </div>
