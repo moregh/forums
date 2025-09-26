@@ -19,50 +19,53 @@ class Router {
             history.pushState({}, '', path);
         }
 
-        if (path !== this.currentRoute) {
-            this.handleRoute();
-        }
+        // Always handle route to ensure navigation works
+        this.handleRoute();
     }
 
     handleRoute() {
         if (this.isNavigating) return; // Prevent recursion
         this.isNavigating = true;
-        
-        const path = window.location.pathname;
-        this.currentRoute = path;
 
-        let routeFound = false;
-        for (const routePath in this.routes) {
-            const regex = new RegExp('^' + routePath.replace(/:\w+/g, '([^/]+)') + '$');
-            const match = path.match(regex);
-            
-            if (match) {
-                const params = {};
-                const paramNames = routePath.match(/:(\w+)/g) || [];
-                paramNames.forEach((param, index) => {
-                    const paramName = param.substring(1);
-                    params[paramName] = match[index + 1];
-                });
-                
-                this.routes[routePath](params);
-                routeFound = true;
-                break;
+        try {
+            const path = window.location.pathname;
+            this.currentRoute = path;
+
+            let routeFound = false;
+            for (const routePath in this.routes) {
+                const regex = new RegExp('^' + routePath.replace(/:\w+/g, '([^/]+)') + '$');
+                const match = path.match(regex);
+
+                if (match) {
+                    const params = {};
+                    const paramNames = routePath.match(/:(\w+)/g) || [];
+                    paramNames.forEach((param, index) => {
+                        const paramName = param.substring(1);
+                        params[paramName] = match[index + 1];
+                    });
+
+                    this.routes[routePath](params);
+                    routeFound = true;
+                    break;
+                }
             }
+
+            if (!routeFound && path !== '/') {
+                history.replaceState({}, '', '/');
+                if (this.routes['/']) {
+                    this.routes['/']({});
+                }
+            } else if (!routeFound && path === '/') {
+                if (this.routes['/']) {
+                    this.routes['/']({});
+                }
+            }
+        } catch (error) {
+            console.error('Router error:', error);
+        } finally {
+            this.isNavigating = false;
+            this.initialized = true;
         }
-        
-        if (!routeFound && path !== '/') {
-            history.replaceState({}, '', '/');
-            if (this.routes['/']) {
-                this.routes['/']({});
-            }
-        } else if (!routeFound && path === '/') {
-            if (this.routes['/']) {
-                this.routes['/']({});
-            }
-        }
-        
-        this.isNavigating = false;
-        this.initialized = true;
     }
 
     init() {

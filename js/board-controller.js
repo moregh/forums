@@ -35,6 +35,10 @@ class BoardController {
 
     async showBoard(boardId, page = 1) {
         try {
+            // Reset initialization flags for new board
+            this._searchInitialized = false;
+            this._sortInitialized = false;
+
             this.state.setState({ loading: true, error: null });
             
             const [board, threads] = await Promise.all([
@@ -115,7 +119,7 @@ class BoardController {
                     </div>
                 </div>
                 <div class="page-actions">
-                    <a href="/" onclick="boardController.router.navigate('/'); return false;" class="back-link">← Back to Forums</a>
+                    <a href="/" onclick="forum.router.navigate('/'); return false;" class="back-link">← Back to Forums</a>
                     ${user && !this.isThreadCreationDisabled(board) ? 
                         `<button onclick="boardController.showCreateThreadForm(${board.board_id})" class="btn-primary">New Thread</button>` : ''}
                 </div>
@@ -224,7 +228,7 @@ class BoardController {
                 ${breadcrumbs.map(crumb => 
                     crumb.current 
                         ? `<span class="breadcrumb-current">${UIComponents.escapeHtml(crumb.text)}</span>`
-                        : `<a href="${crumb.url}" onclick="boardController.router.navigate('${crumb.url}'); return false;">${UIComponents.escapeHtml(crumb.text)}</a>`
+                        : `<a href="${crumb.url}" onclick="forum.router.navigate('${crumb.url}'); return false;">${UIComponents.escapeHtml(crumb.text)}</a>`
                 ).join('<span class="breadcrumb-separator">›</span>')}
             </div>
         `;
@@ -253,10 +257,10 @@ class BoardController {
         return `
             <div class="filter-controls">
                 <div class="search-box">
-                    <input type="text" id="thread-search" placeholder="Search threads..." onkeyup="boardController.handleThreadSearch(this.value, ${boardId})">
+                    <input type="text" id="thread-search" placeholder="Search threads..." onkeyup="boardController.handleThreadSearch(this.value)">
                 </div>
                 <div class="sort-controls">
-                    <select id="thread-sort" onchange="boardController.handleThreadSort(this.value, ${boardId})">
+                    <select id="thread-sort" onchange="boardController.handleThreadSort(this.value)">
                         <option value="default">Default Order</option>
                         <option value="newest">Newest First</option>
                         <option value="oldest">Oldest First</option>
@@ -398,23 +402,35 @@ class BoardController {
         }
     }
 
-    async handleThreadSearch(query, boardId) {
+    async handleThreadSearch(query) {
         if (query.length < 3 && query.length > 0) return;
-        
+
+        // Don't trigger search on initial page load when input is empty
+        if (query.length === 0 && !this._searchInitialized) {
+            this._searchInitialized = true;
+            return;
+        }
+
         try {
             const threads = query.length === 0
-                ? await this.threadService.getThreads(boardId)
-                : await this.threadService.searchThreads(boardId, query);
-                
+                ? this.state.getState().threads || []
+                : await this.threadService.searchThreads(this.state.getState().currentBoard?.board_id, query);
+
             this.updateThreadsList(threads);
         } catch (error) {
             this.notifications.showError('Search failed: ' + error.message);
         }
     }
 
-    async handleThreadSort(sortBy, boardId) {
+    async handleThreadSort(sortBy) {
+        // Don't trigger sort on initial page load with default value
+        if (sortBy === 'default' && !this._sortInitialized) {
+            this._sortInitialized = true;
+            return;
+        }
+
         try {
-            const threads = await this.threadService.getThreads(boardId);
+            const threads = this.state.getState().threads || [];
             const sortedThreads = this.threadService.sortThreads(threads, sortBy);
             this.updateThreadsList(sortedThreads);
         } catch (error) {
@@ -453,7 +469,7 @@ class BoardController {
                 <h3>Error Loading Content</h3>
                 <p>${UIComponents.escapeHtml(message)}</p>
                 <button onclick="location.reload()" class="btn-primary">Retry</button>
-                <button onclick="boardController.router.navigate('/')" class="btn-secondary">Return to Home</button>
+                <button onclick="forum.router.navigate('/')" class="btn-secondary">Return to Home</button>
             </div>
         `;
     }

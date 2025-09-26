@@ -61,11 +61,8 @@ class NavigationManager {
     }
 
     setupEventDelegation() {
-        document.addEventListener('click', (e) => {
-            this.handleThreadNavigation(e);
-            this.handleBoardNavigation(e);
-            this.handleGeneralNavigation(e);
-        });
+        // Event delegation removed - using direct onclick handlers instead
+        // This prevents conflicts and duplicate navigation calls
     }
 
     handleThreadNavigation(e) {
@@ -84,27 +81,26 @@ class NavigationManager {
     handleBoardNavigation(e) {
         const boardCard = e.target.closest('.board-card[onclick]');
         if (boardCard) {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const onclickAttr = boardCard.getAttribute('onclick');
-            const boardIdMatch = onclickAttr.match(/showBoard\((\d+)\)/);
-            if (boardIdMatch) {
-                const boardId = parseInt(boardIdMatch[1]);
-                this.navigateToBoard(boardId);
-            }
+            // Board cards with onclick attributes handle their own navigation
+            // Don't intercept to prevent duplicate calls
+            return;
         }
     }
 
     handleGeneralNavigation(e) {
         const link = e.target.closest('a[href]');
         if (link && this.isInternalLink(link.href)) {
-            const preventDefault = link.getAttribute('onclick')?.includes('return false');
-            if (preventDefault) {
-                e.preventDefault();
-                const url = new URL(link.href);
-                this.router.navigate(url.pathname + url.search + url.hash);
+            const hasOnclickHandler = link.getAttribute('onclick');
+            if (hasOnclickHandler) {
+                // Check if onclick contains 'return false' - if so, let it handle navigation
+                if (hasOnclickHandler.includes('return false')) {
+                    return;
+                }
             }
+            // Handle links without onclick or those that don't return false
+            e.preventDefault();
+            const url = new URL(link.href);
+            this.router.navigate(url.pathname + url.search + url.hash);
         }
     }
 
@@ -331,7 +327,7 @@ class NavigationManager {
     renderLoggedInNavigation(user) {
         return `
             <div class="nav-left">
-                <a href="/" onclick="navigationManager.navigateToHome(); return false;">Forum Home</a>
+                <a href="/" onclick="forum.router.navigate('/'); return false;">Forum Home</a>
                 ${user.is_admin ? `
                     <a href="/admin" onclick="navigationManager.navigateToAdmin(); return false;">Admin Panel</a>
                 ` : ''}
@@ -346,7 +342,7 @@ class NavigationManager {
     renderLoggedOutNavigation() {
         return `
             <div class="nav-left">
-                <a href="/" onclick="navigationManager.navigateToHome(); return false;">Forum Home</a>
+                <a href="/" onclick="forum.router.navigate('/'); return false;">Forum Home</a>
             </div>
             <div class="nav-right">
                 <a href="/login" onclick="navigationManager.navigateToLogin(); return false;">Login</a>
