@@ -98,6 +98,10 @@ class DatabaseManager:
     def __init__(self, db_path: str):
         self.db_path = db_path
         self._cache_cleanup_task = None
+        self._connection_pool = []
+        self._pool_size = 20  # Adjust based on load
+        self._pool_lock = asyncio.Lock()
+        self._pool_initialized = False
 
     async def start_cache_cleanup(self):
         """Start background cache cleanup task"""
@@ -165,14 +169,51 @@ class DatabaseManager:
                 if key in db_cache.timestamps:
                     del db_cache.timestamps[key]
 
+    async def _initialize_pool(self):
+        """Initialize connection pool"""
+        if self._pool_initialized:
+            return
+
+        async with self._pool_lock:
+            if self._pool_initialized:
+                return
+
+            for _ in range(self._pool_size):
+                conn = await aiosqlite.connect(self.db_path)
+                conn.row_factory = aiosqlite.Row
+                # Enable WAL mode for better concurrency
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA cache_size=10000")
+                await conn.execute("PRAGMA temp_store=MEMORY")
+                self._connection_pool.append(conn)
+
+            self._pool_initialized = True
+
     async def get_connection(self):
+        """Get connection from pool"""
+        if not self._pool_initialized:
+            await self._initialize_pool()
+
+        if self._connection_pool:
+            return self._connection_pool.pop()
+
+        # Pool exhausted, create temporary connection
         conn = await aiosqlite.connect(self.db_path)
         conn.row_factory = aiosqlite.Row
+        await conn.execute("PRAGMA journal_mode=WAL")
         return conn
 
+    async def return_connection(self, conn):
+        """Return connection to pool"""
+        if len(self._connection_pool) < self._pool_size:
+            self._connection_pool.append(conn)
+        else:
+            await conn.close()
+
     async def execute_query(self, query: str, params: tuple = (), fetch_one: bool = False):
-        async with aiosqlite.connect(self.db_path) as conn:
-            conn.row_factory = aiosqlite.Row
+        conn = await self.get_connection()
+        try:
             cursor = await conn.cursor()
             await cursor.execute(query, params)
 
@@ -186,15 +227,20 @@ class DatabaseManager:
                 result = await cursor.fetchall()
             await cursor.close()
             return result
+        finally:
+            await self.return_connection(conn)
 
     async def execute_insert(self, query: str, params: tuple = ()) -> int:
-        async with aiosqlite.connect(self.db_path) as conn:
+        conn = await self.get_connection()
+        try:
             cursor = await conn.cursor()
             await cursor.execute(query, params)
             await conn.commit()
             lastrowid = cursor.lastrowid
             await cursor.close()
             return lastrowid  # type: ignore
+        finally:
+            await self.return_connection(conn)
 
     
     @async_ttl_cache(ttl=USER_CACHE_TTL)  # Cache for 5 minutes

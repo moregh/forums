@@ -468,10 +468,25 @@ async def remove_user_admin(user_id: int, request: Request, current_user: dict =
     return {"message": "Admin privileges removed successfully"}
 
 @app.get("/api/boards", response_model=List[BoardResponse])
-async def get_boards(response: Response):
+async def get_boards(response: Response, request: Request):
+    # Check for conditional requests (ETags)
     boards = await db.get_all_boards()
-    # Cache boards list for 5 minutes since it doesn't change often
-    response.headers["Cache-Control"] = f"public, max-age={STATS_CACHE_TTL}"
+
+    # Generate ETag based on boards data
+    import hashlib
+    import json
+    boards_hash = hashlib.md5(json.dumps([dict(b) for b in boards], sort_keys=True).encode()).hexdigest()
+
+    if_none_match = request.headers.get("if-none-match")
+    if if_none_match == f'"{boards_hash}"':
+        response.status_code = 304
+        return Response(status_code=304)
+
+    # Set aggressive caching headers
+    response.headers["Cache-Control"] = f"public, max-age={STATS_CACHE_TTL}, stale-while-revalidate=300"
+    response.headers["ETag"] = f'"{boards_hash}"'
+    response.headers["Vary"] = "Accept-Encoding"
+
     return [BoardResponse(**board) for board in boards]
 
 @app.post("/api/boards", response_model=BoardResponse)
@@ -483,8 +498,25 @@ async def create_board(board_data: BoardCreate, request: Request, current_user: 
     return BoardResponse(**board) # type: ignore
 
 @app.get("/api/boards/{board_id}/threads", response_model=List[ThreadResponse])
-async def get_threads(board_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE):
+async def get_threads(board_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE, response: Response = None, request: Request = None):
     threads = await db.get_threads_by_board(board_id, page, per_page)
+
+    # Generate ETag for this specific page
+    import hashlib
+    import json
+    cache_key = f"threads_{board_id}_{page}_{per_page}"
+    threads_hash = hashlib.md5(json.dumps([dict(t) for t in threads], sort_keys=True).encode()).hexdigest()
+
+    if request:
+        if_none_match = request.headers.get("if-none-match")
+        if if_none_match == f'"{threads_hash}"':
+            return Response(status_code=304)
+
+    if response:
+        # Cache for 2 minutes with stale-while-revalidate
+        response.headers["Cache-Control"] = "public, max-age=120, stale-while-revalidate=60"
+        response.headers["ETag"] = f'"{threads_hash}"'
+
     return [ThreadResponse(**thread) for thread in threads]
 
 @app.post("/api/boards/{board_id}/threads", response_model=ThreadResponse)
@@ -542,9 +574,16 @@ async def toggle_thread_sticky(thread_id: int, sticky_data: ThreadStickyUpdate, 
     return {"message": f"Thread {'stickied' if sticky else 'unstickied'} successfully"}
 
 @app.get("/api/threads/{thread_id}/posts", response_model=List[PostResponse])
-async def get_posts(thread_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE):
-    await db.increment_thread_view_count(thread_id)
+async def get_posts(thread_id: int, page: int = 1, per_page: int = DEFAULT_PAGE_SIZE, response: Response = None):
+    # Batch view count increments (fire-and-forget)
+    asyncio.create_task(db.increment_thread_view_count(thread_id))
+
     posts = await db.get_posts_by_thread(thread_id, page, per_page)
+
+    if response:
+        # Short cache for posts to reduce DB load
+        response.headers["Cache-Control"] = "private, max-age=30, stale-while-revalidate=15"
+
     return [PostResponse(**post) for post in posts]
 
 @app.post("/api/threads/{thread_id}/posts", response_model=PostResponse)
