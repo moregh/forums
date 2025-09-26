@@ -4,8 +4,20 @@ class Router {
         this.currentRoute = null;
         this.isNavigating = false;
         this.initialized = false;
-        
+
         window.addEventListener('popstate', () => this.handleRoute());
+
+        // Ensure state stays in sync with URL
+        this.syncState();
+    }
+
+    syncState() {
+        this.currentRoute = window.location.pathname;
+        // Reset navigation flag if it's stuck
+        if (this.isNavigating) {
+            console.warn('Router was stuck in navigating state, resetting');
+            this.isNavigating = false;
+        }
     }
 
     register(path, handler) {
@@ -13,13 +25,19 @@ class Router {
     }
 
     navigate(path, pushState = true) {
+        // Ensure we're in sync before navigating
+        if (this.currentRoute !== window.location.pathname) {
+            console.warn('Router state was out of sync, fixing');
+            this.syncState();
+        }
+
         if (this.isNavigating) return; // Prevent recursion
 
         if (pushState && path !== window.location.pathname) {
             history.pushState({}, '', path);
         }
 
-        // Always handle route to ensure navigation works
+        // Always handle route and sync currentRoute
         this.handleRoute();
     }
 
@@ -29,6 +47,8 @@ class Router {
 
         try {
             const path = window.location.pathname;
+
+            // Always sync currentRoute with actual URL first
             this.currentRoute = path;
 
             let routeFound = false;
