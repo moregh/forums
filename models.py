@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Dict, Any, List
 import re
 from config import (USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH, PASSWORD_MIN_LENGTH,
@@ -11,7 +11,8 @@ class UserRegister(BaseModel):
     email: EmailStr
     password: str
     
-    @validator('username')
+    @field_validator('username')
+    @classmethod
     def validate_username(cls, v):
         if len(v) < USERNAME_MIN_LENGTH or len(v) > USERNAME_MAX_LENGTH:
             raise ValueError(f'Username must be {USERNAME_MIN_LENGTH}-{USERNAME_MAX_LENGTH} characters')
@@ -19,7 +20,8 @@ class UserRegister(BaseModel):
             raise ValueError('Username can only contain letters, numbers, hyphens, and underscores')
         return v
     
-    @validator('password')
+    @field_validator('password')
+    @classmethod
     def validate_password(cls, v):
         if len(v) < PASSWORD_MIN_LENGTH:
             raise ValueError(f'Password must be at least {PASSWORD_MIN_LENGTH} characters')
@@ -80,7 +82,8 @@ class BoardCreate(BaseModel):
     name: str
     description: str
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if len(v) < BOARD_NAME_MIN_LENGTH or len(v) > BOARD_NAME_MAX_LENGTH:
             raise ValueError(f'Board name must be {BOARD_NAME_MIN_LENGTH}-{BOARD_NAME_MAX_LENGTH} characters')
@@ -101,13 +104,15 @@ class ThreadCreate(BaseModel):
     title: str
     content: str
     
-    @validator('title')
+    @field_validator('title')
+    @classmethod
     def validate_title(cls, v):
         if len(v) < THREAD_TITLE_MIN_LENGTH or len(v) > THREAD_TITLE_MAX_LENGTH:
             raise ValueError(f'Thread title must be {THREAD_TITLE_MIN_LENGTH}-{THREAD_TITLE_MAX_LENGTH} characters')
         return v
     
-    @validator('content')
+    @field_validator('content')
+    @classmethod
     def validate_content(cls, v):
         if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
             raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
@@ -116,7 +121,8 @@ class ThreadCreate(BaseModel):
 class PostCreate(BaseModel):
     content: str
     
-    @validator('content')
+    @field_validator('content')
+    @classmethod
     def validate_content(cls, v):
         if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
             raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
@@ -154,7 +160,8 @@ class ErrorResponse(BaseModel):
 class PostEdit(BaseModel):
     content: str
     
-    @validator('content')
+    @field_validator('content')
+    @classmethod
     def validate_content(cls, v):
         if len(v) < POST_CONTENT_MIN_LENGTH or len(v) > POST_CONTENT_MAX_LENGTH:
             raise ValueError(f'Content must be {POST_CONTENT_MIN_LENGTH}-{POST_CONTENT_MAX_LENGTH} characters')
@@ -199,7 +206,8 @@ class UserProfileUpdate(BaseModel):
     email: Optional[EmailStr] = None
     is_banned: Optional[bool] = None
 
-    @validator('avatar_url')
+    @field_validator('avatar_url')
+    @classmethod
     def validate_avatar_url(cls, v):
         if v is not None and len(v) > 500:
             raise ValueError('Avatar URL must be less than 500 characters')
@@ -214,19 +222,22 @@ class UserPreferencesUpdate(BaseModel):
     show_avatars: Optional[bool] = None
     show_signatures: Optional[bool] = None
 
-    @validator('theme')
+    @field_validator('theme')
+    @classmethod
     def validate_theme(cls, v):
         if v is not None and v not in ['light', 'dark', 'auto']:
             raise ValueError('Theme must be light, dark, or auto')
         return v
 
-    @validator('posts_per_page')
+    @field_validator('posts_per_page')
+    @classmethod
     def validate_posts_per_page(cls, v):
         if v is not None and (v < 5 or v > 100):
             raise ValueError('Posts per page must be between 5 and 100')
         return v
 
-    @validator('signature')
+    @field_validator('signature')
+    @classmethod
     def validate_signature(cls, v):
         if v is not None and len(v) > 500:
             raise ValueError('Signature must be less than 500 characters')
@@ -236,13 +247,15 @@ class UserBan(BaseModel):
     reason: Optional[str] = None
     duration: Optional[int] = None  # Duration in days, None for permanent
 
-    @validator('reason')
+    @field_validator('reason')
+    @classmethod
     def validate_reason(cls, v):
         if v is not None and len(v) > 1000:
             raise ValueError('Ban reason must be less than 1000 characters')
         return v
 
-    @validator('duration')
+    @field_validator('duration')
+    @classmethod
     def validate_duration(cls, v):
         if v is not None and (v < 1 or v > 3650):  # Max 10 years
             raise ValueError('Ban duration must be between 1 and 3650 days')
@@ -252,7 +265,8 @@ class ThreadLockUpdate(BaseModel):
     locked: bool
     reason: Optional[str] = None
 
-    @validator('reason')
+    @field_validator('reason')
+    @classmethod
     def validate_reason(cls, v):
         if v is not None and len(v) > 500:
             raise ValueError('Lock reason must be less than 500 characters')
@@ -262,7 +276,8 @@ class ThreadStickyUpdate(BaseModel):
     sticky: bool
     reason: Optional[str] = None
 
-    @validator('reason')
+    @field_validator('reason')
+    @classmethod
     def validate_reason(cls, v):
         if v is not None and len(v) > 500:
             raise ValueError('Sticky reason must be less than 500 characters')
