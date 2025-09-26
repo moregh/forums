@@ -3,16 +3,14 @@ import aiosqlite
 import asyncio
 from typing import List, Dict, Optional, Any
 from datetime import datetime, timezone
-from functools import lru_cache, wraps
+from functools import wraps
 import hashlib
 import json
 from config import (DEFAULT_CACHE_TTL, CACHE_CLEANUP_INTERVAL, CACHE_EXPIRE_TIME,
                    USER_CACHE_TTL, BOARD_CACHE_TTL, THREAD_CACHE_TTL,
                    DEFAULT_PAGE_SIZE, ADMIN_PAGE_SIZE, RECENT_POSTS_LIMIT,
                    RANK_VETERAN_POSTS, RANK_ACTIVE_POSTS, RANK_REGULAR_POSTS, RANK_MEMBER_POSTS,
-                   SECONDS_PER_DAY, ONLINE_STATUS_MINUTES, RECENT_ACTIVITY_HOURS,
-                   RATE_LIMIT_WINDOW_DEFAULT, SESSION_EXPIRE_HOURS, SESSION_TOKEN_BYTES,
-                   FAILED_LOGIN_RESET, MINUTES_15, SECONDS_PER_HOUR, TOP_BOARDS_LIMIT)
+                   SECONDS_PER_DAY, MINUTES_15, SECONDS_PER_HOUR, TOP_BOARDS_LIMIT)
 
 
 def timestamp() -> float:

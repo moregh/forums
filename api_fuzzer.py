@@ -1,17 +1,5 @@
 #!/usr/bin/env python3
-"""
-Comprehensive API Fuzzing Script for Forum Application
-
-This script fuzzes all API endpoints with various combinations of:
-- Valid/invalid authentication tokens
-- Valid/invalid/missing CSRF tokens
-- Valid/malformed/malicious data payloads
-- Different user permission levels
-- Database integrity verification
-
-WARNING: This script is destructive and will modify/corrupt data in the database.
-Only run this against a test environment.
-"""
+# type: ignore
 
 import asyncio
 import aiosqlite
@@ -21,8 +9,6 @@ import json
 import time
 import sys
 import hashlib
-import hmac
-import base64
 import uuid
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass

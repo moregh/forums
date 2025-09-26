@@ -6,7 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
@@ -16,14 +16,14 @@ from models import TokenResponse, UserLogin, UserRegister, UserResponse, BoardRe
 from models import BoardCreate, ThreadCreate, ThreadResponse, PostCreate, PostResponse, ErrorResponse, UserInfo, PublicUserInfo
 from models import UserProfileUpdate, UserPreferencesUpdate, UserBan, ThreadLockUpdate, ThreadStickyUpdate
 from security import SecurityManager
-from functools import wraps, lru_cache
+from functools import wraps
 from utils import timestamp
 from config import *
 from config import (DEFAULT_HOST, DEFAULT_PORT, MAX_REQUEST_SIZE_MB, GZIP_MIN_SIZE,
                    USER_INFO_CACHE_TTL, PUBLIC_USER_INFO_CACHE_TTL, STATS_CACHE_TTL,
                    DEFAULT_PAGE_SIZE, ADMIN_PAGE_SIZE, SEARCH_QUERY_MIN_LENGTH,
                    HTTP_REQUEST_ENTITY_TOO_LARGE, HTTP_NOT_FOUND, HTTP_INTERNAL_SERVER_ERROR,
-                   CACHE_MAX_AGE_24H, SECONDS_PER_DAY, SECONDS_PER_HOUR, MINUTES_15)
+                   CACHE_MAX_AGE_24H)
 import asyncio
 import time
 
